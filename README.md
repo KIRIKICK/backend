@@ -16,6 +16,12 @@ backend/
         └── test/
 ```
 
+## 도메인 문서
+
+도메인별 구현 정책은 `docs/domain/`에서 관리합니다.
+
+- [USER: 회원 프로필](docs/domain/user.md)
+
 ## 실행과 검증
 
 `backend` 디렉터리에서 실행합니다.

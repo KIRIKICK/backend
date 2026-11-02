@@ -35,6 +35,17 @@ Java 21과 임시 `postgres:17-alpine` 서비스로 `./gradlew build --no-daemon
 CI의 DB와 계정은 테스트 전용이며 운영·개발 DB나 GitHub Secrets를 사용하지 않습니다.
 현재 JPA 슬라이스 테스트는 Flyway를 비활성화하므로 마이그레이션 검증은 포함하지 않습니다.
 
+## 회원/OAuthIdentity 마이그레이션 검증
+
+UserAuthSchemaMigrationTest는 TEST_POSTGRES_*가 있는 경우에만 실행됩니다. 매번 임의의
+격리 스키마에 Flyway를 적용하고, Hibernate mapping validation과 UUID·OAuth 고유 제약·FK·CHECK
+제약을 실제 PostgreSQL에서 검증합니다. 이 테스트는 생성한 스키마만 삭제하며 public 스키마나
+Flyway clean을 사용하지 않습니다.
+
+PostgresJpaTest의 create-drop 스키마는 scalar OAuthIdentity.userId의 DB FK를 만들지 않습니다.
+따라서 repository slice는 저장·조회·auditing만, FK와 migration 제약은
+UserAuthSchemaMigrationTest만 검증합니다.
+
 ## 아키텍처 규칙
 
 공유 `ArchitectureTest`는 각 Java 모듈의 main 클래스 출력만 검사합니다. API 전용 클래스나 패키지에는 의존하지 않습니다.
