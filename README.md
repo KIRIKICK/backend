@@ -1,6 +1,6 @@
 # Backend
 
-Gradle 멀티모듈 프로젝트입니다. 현재 실행 모듈은 `api` 하나이며, 필요한 시점에 모듈을 추가합니다.
+Gradle 멀티모듈 프로젝트입니다. 실행 모듈은 `api`이고, `test-support`는 테스트 전용 공통 라이브러리입니다.
 
 ```text
 backend/
@@ -9,11 +9,12 @@ backend/
 ├── gradlew
 ├── gradle/
 ├── compose.yaml          # 로컬 개발용 PostgreSQL/Redis
-└── api/
-    ├── build.gradle      # API 의존성, Java 21, 테스트/실행 설정
-    └── src/
-        ├── main/
-        └── test/
+├── api/
+│   ├── build.gradle      # API 의존성, Java 21, 테스트/실행 설정
+│   └── src/
+│       ├── main/
+│       └── test/
+└── test-support/         # Testcontainers 등 테스트 전용 공통 지원
 ```
 
 ## 도메인 문서
@@ -27,7 +28,7 @@ backend/
 `backend` 디렉터리에서 실행합니다.
 
 ```sh
-./gradlew projects         # 현재 모듈: :api
+./gradlew projects         # 현재 모듈: :api, :test-support
 ./gradlew clean build      # 전체 모듈 빌드/테스트
 ./gradlew test             # 전체 모듈 테스트
 ./gradlew :api:test        # API 테스트만 실행
@@ -41,7 +42,9 @@ backend/
 
 `bootRun`은 기존처럼 루트의 `compose.yaml`을 찾도록 작업 디렉터리를 `backend`로 유지합니다.
 IDE에서 애플리케이션을 직접 실행할 때도 작업 디렉터리를 `backend`로 지정하세요.
-로컬 실행에는 Docker가 필요하며, JPA 테스트의 PostgreSQL DB는 별도로 지정합니다.
+`bootRun`의 local Docker Compose와 PostgreSQL Testcontainers는 별도입니다. PostgreSQL 통합
+테스트는 Docker가 필요하지만 외부 DB URL이나 `.env` 값을 사용하지 않습니다. 자세한 실행 방법은
+[JPA 테스트 설정](api/src/test/README.md)을 참고하세요.
 
 ## 실행 프로필과 DB
 
@@ -157,7 +160,8 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 커밋 전에는 staged 변경의 Gitleaks 검사와 `spotlessCheck`, push 전에는 `test`를 실행합니다.
 포맷 검사는 현재 작업 디렉터리의 전체 Java 소스가 대상이며, 파일을 자동 수정하거나 스테이징하지 않습니다.
-PostgreSQL 환경변수가 없는 로컬에서는 해당 DB 테스트를 건너뛰며, 실제 PostgreSQL 검증은 CI에서 수행합니다.
+PostgreSQL 테스트는 Docker의 Testcontainers로 로컬과 CI에서 같은 방식으로 실행합니다. 외부 DB URL이나
+환경변수를 사용하지 않으며, Docker를 사용할 수 없으면 PostgreSQL 테스트는 건너뛰지 않고 실패합니다.
 
 Git·JDK 21·native Gitleaks가 필요합니다. 로컬 Gitleaks는 CI와 같은 v8.30.1을 권장합니다.
 macOS는 `brew install gitleaks`로 설치할 수 있습니다.

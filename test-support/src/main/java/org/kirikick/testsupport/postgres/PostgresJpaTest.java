@@ -1,4 +1,4 @@
-package org.kirikick.api.support;
+package org.kirikick.testsupport.postgres;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -6,8 +6,6 @@ import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import org.kirikick.api.config.JpaAuditingConfig;
-import org.kirikick.api.config.QuerydslConfig;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
@@ -19,13 +17,10 @@ import org.springframework.context.annotation.Import;
 @Inherited
 @DataJpaTest(
     properties = {
-      "spring.datasource.url=${TEST_POSTGRES_URL}",
-      "spring.datasource.username=${TEST_POSTGRES_USERNAME:postgres}",
-      "spring.datasource.password=${TEST_POSTGRES_PASSWORD:}",
       "spring.datasource.driver-class-name=org.postgresql.Driver",
       "spring.flyway.enabled=false",
       "spring.jpa.hibernate.ddl-auto=create-drop"
     })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({QuerydslConfig.class, JpaAuditingConfig.class})
+@Import(PostgresJpaTestConfiguration.class)
 public @interface PostgresJpaTest {}

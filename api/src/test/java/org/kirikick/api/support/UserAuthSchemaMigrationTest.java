@@ -25,17 +25,15 @@ import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.user.domain.User;
+import org.kirikick.testsupport.postgres.PostgresTestDatabase;
 
-@EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = "jdbc:postgresql:.*")
 class UserAuthSchemaMigrationTest {
 
-  private final String url = System.getenv("TEST_POSTGRES_URL");
-  private final String username =
-      System.getenv().getOrDefault("TEST_POSTGRES_USERNAME", "postgres");
-  private final String password = System.getenv().getOrDefault("TEST_POSTGRES_PASSWORD", "");
+  private final String url = PostgresTestDatabase.container().getJdbcUrl();
+  private final String username = PostgresTestDatabase.container().getUsername();
+  private final String password = PostgresTestDatabase.container().getPassword();
   private final String schema = "user_auth_" + UUID.randomUUID().toString().replace("-", "");
 
   @AfterEach

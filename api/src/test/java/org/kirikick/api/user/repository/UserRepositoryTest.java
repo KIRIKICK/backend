@@ -5,14 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.kirikick.api.support.PostgresJpaTest;
+import org.kirikick.api.support.JpaSliceTest;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.domain.UserStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 
-@PostgresJpaTest
-@EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = "jdbc:postgresql:.*")
+@JpaSliceTest
 class UserRepositoryTest {
 
   @Autowired private UserRepository userRepository;
