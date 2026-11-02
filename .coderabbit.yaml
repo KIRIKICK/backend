@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: ko-KR
+
+reviews:
+  profile: chill
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+  path_instructions:
+    - path: "**/src/**/*.java"
+      instructions: |
+        Java 타입 참조는 기본적으로 import 후 단순 클래스명을 사용하고, 불필요한 FQCN 직접 표기는 지적한다.
+        같은 단순 이름의 타입을 함께 사용해 이름이 충돌하면 FQCN을 허용하며, 이를 피하려는 목적만으로 타입 이름 변경을 요구하지 않는다.
+        직접 작성한 타입의 이름이 역할을 모호하게 표현할 때만 의미를 명확히 하는 이름 개선을 제안한다.
+        ArchUnit의 타입 판별이나 리플렉션·메타데이터에 사용하는 문자열 FQCN은 이 규칙에서 제외한다.
+
+    - path: "**/src/main/java/**/*.java"
+      instructions: |
+        취향성 스타일 변경보다 실제 버그, 보안, 데이터 정합성 문제를 우선한다.
+        내부 시점형 데이터의 비교·저장은 Instant를 사용한다.
+        정책상 날짜 경계는 Asia/Seoul로 계산하고, API 시각은 UTC ISO 8601로 표현한다.
+        달력 정보인 날짜·연월까지 Instant로 바꾸도록 요구하지 않는다.
+        BaseTimeEntity의 생성 시각은 수정하지 않는다.
+        JPA 벌크 업데이트가 auditing을 우회할 때 필요한 수정 시각 처리가 누락되는지 확인한다.
+        권한 검사 누락, 개인정보 노출, 트랜잭션·조회 문제는 실제 영향 근거와 함께 지적한다.
+        JPA 조회 결과를 순회하며 연관관계에 접근하는 등 N+1이 발생할 수 있는 실제 조회 흐름을 확인한다. LAZY 선언이나 연관관계의 존재만으로 N+1을 단정하지 않는다.
+        공통 default_batch_fetch_size=100은 N+1 완화책일 뿐 해결을 보장하지 않는다. N+1 위험이 확인되면 추가 쿼리가 발생하는 접근 경로를 설명하고, 조회 목적에 맞는 fetch join, @EntityGraph 또는 DTO projection을 제안한다. 일괄적인 EAGER 전환을 해결책으로 요구하지 않는다.
+        컬렉션 fetch join·EntityGraph와 페이징 조합의 메모리 페이징 위험 및 다중 컬렉션 fetch의 중복행·쿼리 비용을 검토한다. 필요하면 ID 페이지 선조회 후 fetch나 별도 DTO 조회를 제안하며, 변경 효과를 확인할 쿼리 수 검증 테스트를 권장한다.
+        기능별 controller·service·repository·domain 구조를 사용하며, 외부 연동이 필요할 때만 infra를 추가한다.
+        domain의 상태는 private으로 캡슐화하고 setter 대신 의도를 표현하는 행동 메서드를 사용한다.
+        domain은 controller·service·repository·infra를 참조하지 않는다.
+        일반 getter나 엔티티 연관관계 자체를 금지하지 않는다.
+        service가 repository를 반환 시그니처로 노출하는지 확인한다. 생성자 주입은 허용한다.
+        REST 요청 처리 메서드는 controller.dto DTO(배열·컬렉션·ResponseEntity 포함)를 반환한다.
+        본문 없는 void·ResponseEntity<Void>는 허용하되, DTO 내부의 엔티티·민감정보 노출도 확인한다.
+
+    - path: "**/src/test/java/**/*.java"
+      instructions: |
+        구현 세부사항이나 mock 호출 자체보다 실제 동작·결과를 검증하는지 확인한다.
+        시간 경계 테스트는 고정된 시각을 사용하고, 임의의 sleep에 의존하지 않는다.
+        PostgreSQL 고유 기능·타입에 의존하는 동작을 H2 테스트만으로 검증했다고 간주하지 않는다.
+        실패를 재현할 수 있는 조건과 누락된 검증을 구체적으로 제시한다.

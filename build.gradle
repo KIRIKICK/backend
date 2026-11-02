@@ -1,0 +1,46 @@
+plugins {
+	id 'org.springframework.boot' version '3.5.16' apply false
+	id 'io.spring.dependency-management' version '1.1.7' apply false
+	id 'com.diffplug.spotless' version '8.10.4'
+}
+
+repositories {
+	mavenCentral()
+}
+
+spotless {
+	java {
+		target '**/src/**/*.java'
+		targetExclude '**/build/**', '**/.gradle/**', '**/bin/**', '**/generated/**'
+		googleJavaFormat('2.0.0')
+	}
+}
+
+subprojects {
+	group = 'org.kirikick'
+	version = '0.0.1-SNAPSHOT'
+
+	repositories {
+		mavenCentral()
+	}
+
+	plugins.withId('java') {
+		sourceSets.test.java.srcDir rootProject.file('architecture-tests/src/test/java')
+
+		dependencies {
+			testImplementation platform('org.junit:junit-bom:5.12.2')
+			testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.1'
+			testImplementation 'org.junit.jupiter:junit-jupiter'
+			testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+		}
+
+		tasks.named('test') {
+			useJUnitPlatform()
+			systemProperty 'architecture.classes.dirs', sourceSets.main.output.classesDirs.asPath
+		}
+
+		tasks.named('check') {
+			dependsOn rootProject.tasks.named('spotlessCheck')
+		}
+	}
+}

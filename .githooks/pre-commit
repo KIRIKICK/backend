@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    printf '%s\n' 'Gitleaks is required on PATH. See the Git hooks section in README.md.' >&2
+    exit 1
+fi
+
+gitleaks git --staged --redact --no-banner </dev/null
+exec ./gradlew spotlessCheck </dev/null

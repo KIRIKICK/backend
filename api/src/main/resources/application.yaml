@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: api
+  profiles:
+    default: local
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+  docker:
+    compose:
+      enabled: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+  flyway:
+    clean-disabled: true
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    redis:
+      # shortcut: Redis 기능 도입 전까지 health 검사에서 제외하며, 사용 시 연결 설정과 함께 활성화한다.
+      enabled: false
