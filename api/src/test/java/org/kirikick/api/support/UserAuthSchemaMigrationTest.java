@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -378,7 +379,7 @@ class UserAuthSchemaMigrationTest {
                 "select table_name from information_schema.tables where table_schema = "
                     + quote(schema)
                     + " and table_type = 'BASE TABLE'")) {
-      Set<String> tableNames = new java.util.HashSet<>();
+      Set<String> tableNames = new HashSet<>();
       while (resultSet.next()) {
         tableNames.add(resultSet.getString(1));
       }
