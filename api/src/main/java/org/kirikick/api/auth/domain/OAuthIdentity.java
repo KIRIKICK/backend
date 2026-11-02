@@ -2,7 +2,6 @@ package org.kirikick.api.auth.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
@@ -10,19 +9,16 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
+import org.kirikick.api.common.entity.BaseCreatedTimeEntity;
 import org.kirikick.api.common.exception.DomainException;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
-@EntityListeners(AuditingEntityListener.class)
 @Table(
     name = "oauth_identities",
     uniqueConstraints = {
@@ -33,7 +29,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
           name = "uk_oauth_identities_user_provider",
           columnNames = {"user_id", "provider"})
     })
-public class OAuthIdentity {
+public class OAuthIdentity extends BaseCreatedTimeEntity {
 
   private static final int PROVIDER_SUBJECT_MAX_LENGTH = 255;
 
@@ -54,10 +50,6 @@ public class OAuthIdentity {
       updatable = false,
       length = PROVIDER_SUBJECT_MAX_LENGTH)
   private String providerSubject;
-
-  @CreatedDate
-  @Column(name = "created_at", nullable = false, updatable = false)
-  private Instant createdAt;
 
   private OAuthIdentity(Long userId, OAuthProvider provider, String providerSubject) {
     if (userId == null || userId <= 0) {
