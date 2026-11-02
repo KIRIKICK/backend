@@ -10,6 +10,6 @@ java {
 
 dependencies {
 	api platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
-	api 'org.springframework:spring-test'
+	api 'org.springframework.boot:spring-boot-test-autoconfigure'
 	api 'org.testcontainers:postgresql'
 }
