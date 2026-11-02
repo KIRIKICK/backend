@@ -1,3 +1,4 @@
 rootProject.name = 'kirikick-backend'
 
 include 'api'
+include 'test-support'
