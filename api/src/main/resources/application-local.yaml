@@ -4,3 +4,8 @@ spring:
   docker:
     compose:
       enabled: true
+auth:
+  redis-namespace: ${AUTH_REDIS_NAMESPACE:kirikick:local}:auth
+  session-redis-namespace: ${AUTH_REDIS_NAMESPACE:kirikick:local}:spring:session
+  fe-origin: ${AUTH_FE_ORIGIN:http://localhost:5173}
+  secure-cookies: false

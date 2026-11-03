@@ -230,8 +230,8 @@ class ProfileConfigurationTest {
           assertThat(environment.getProperty("management.endpoint.health.group.liveness.include"))
               .isEqualTo("livenessState");
           assertThat(environment.getProperty("management.endpoint.health.group.readiness.include"))
-              .isEqualTo("readinessState,db");
-          assertThat(environment.getProperty("management.health.redis.enabled")).isEqualTo("false");
+              .isEqualTo("readinessState,db,redis");
+          assertThat(environment.getProperty("management.health.redis.enabled")).isEqualTo("true");
         });
   }
 

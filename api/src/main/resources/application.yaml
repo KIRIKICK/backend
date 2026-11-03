@@ -20,6 +20,16 @@ spring:
         default_batch_fetch_size: 100
   flyway:
     clean-disabled: true
+auth:
+  redis-namespace: ${AUTH_REDIS_NAMESPACE}:auth
+  session-redis-namespace: ${AUTH_REDIS_NAMESPACE}:spring:session
+  fe-origin: ${AUTH_FE_ORIGIN}
+  secure-cookies: true
+  jwt:
+    issuer: ${AUTH_JWT_ISSUER}
+    audience: ${AUTH_JWT_AUDIENCE}
+    private-key-location: ${AUTH_JWT_PRIVATE_KEY_LOCATION}
+    public-key-location: ${AUTH_JWT_PUBLIC_KEY_LOCATION}
 
 server:
   port: ${PORT:8080}
@@ -38,8 +48,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db
+          include: readinessState,db,redis
   health:
     redis:
-      # shortcut: Redis 기능 도입 전까지 health 검사에서 제외하며, 사용 시 연결 설정과 함께 활성화한다.
-      enabled: false
+      enabled: true
