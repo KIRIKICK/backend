@@ -2,7 +2,15 @@ package org.kirikick.api.auth.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,6 +33,8 @@ import org.kirikick.api.auth.domain.IssuedSession;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.support.RedisTestSupport;
 import org.kirikick.api.common.exception.DomainException;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -166,6 +176,50 @@ class RedisRefreshSessionStoreTest {
 
       assertThat(otherNamespace.findActive(issued.session().id(), issued.session().userUuid()))
           .isEmpty();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void logsRedisFailureTypesAtWarnWithoutSensitiveData(boolean hasRootCause) {
+    String token = "sensitive-refresh-token";
+    String digest = "sensitive-digest";
+    String sessionId = "sensitive-session-id";
+    String redisKey = "sensitive-redis-key";
+    String sensitiveMessage = String.join(" ", token, digest, sessionId, redisKey);
+    DataAccessResourceFailureException failure =
+        new DataAccessResourceFailureException(
+            sensitiveMessage, hasRootCause ? new IllegalStateException(sensitiveMessage) : null);
+    StringRedisTemplate failingRedis = mock(StringRedisTemplate.class);
+    when(failingRedis.<Long>execute(any(), anyList())).thenThrow(failure);
+    RedisRefreshSessionStore store =
+        new RedisRefreshSessionStore(failingRedis, redisKey, fixedClock());
+    Logger logger = (Logger) LoggerFactory.getLogger(RedisRefreshSessionStore.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      assertThatThrownBy(() -> store.revoke(sessionId))
+          .isInstanceOf(DomainException.class)
+          .extracting(exception -> ((DomainException) exception).getErrorCode())
+          .isEqualTo(AuthErrorCode.AUTH_STATE_UNAVAILABLE);
+      assertThat(appender.list)
+          .singleElement()
+          .satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                .contains("exceptionType=" + DataAccessResourceFailureException.class.getName())
+                .contains(
+                    "rootCauseType="
+                        + (hasRootCause
+                            ? IllegalStateException.class.getName()
+                            : DataAccessResourceFailureException.class.getName()))
+                .doesNotContain(token, digest, sessionId, redisKey);
+            assertThat(event.getThrowableProxy()).isNull();
+          });
+    } finally {
+      logger.detachAppender(appender);
+      appender.stop();
     }
   }
 

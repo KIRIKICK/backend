@@ -16,12 +16,16 @@ import org.kirikick.api.auth.domain.IssuedSession;
 import org.kirikick.api.auth.domain.LoginSession;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.common.exception.DomainException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 /** Redis-backed opaque Refresh Token sessions. Raw tokens are never stored. */
 public final class RedisRefreshSessionStore {
+
+  private static final Logger log = LoggerFactory.getLogger(RedisRefreshSessionStore.class);
 
   private enum SessionStatus {
     ACTIVE,
@@ -287,6 +291,11 @@ public final class RedisRefreshSessionStore {
   }
 
   private static DomainException unavailable(DataAccessException exception) {
+    // Exception messages and stack traces may expose Redis keys and token digests.
+    log.warn(
+        "Redis refresh session state unavailable: exceptionType={}, rootCauseType={}",
+        exception.getClass().getName(),
+        exception.getMostSpecificCause().getClass().getName());
     return new DomainException(AuthErrorCode.AUTH_STATE_UNAVAILABLE);
   }
 }
