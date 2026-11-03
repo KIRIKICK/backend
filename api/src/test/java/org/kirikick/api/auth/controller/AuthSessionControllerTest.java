@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.LoginSession;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.DefaultCsrfToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -36,7 +38,7 @@ class AuthSessionControllerTest {
     mvc.perform(
             get("/auth/csrf")
                 .requestAttr(
-                    org.springframework.security.web.csrf.CsrfToken.class.getName(),
+                    CsrfToken.class.getName(),
                     new DefaultCsrfToken("X-XSRF-TOKEN", "_csrf", "masked")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.token", is("masked")))
@@ -59,9 +61,7 @@ class AuthSessionControllerTest {
             .build();
 
     MvcResult result =
-        mvc.perform(
-                post("/auth/refresh")
-                    .cookie(new jakarta.servlet.http.Cookie("__Host-refresh", "old-refresh")))
+        mvc.perform(post("/auth/refresh").cookie(new Cookie("__Host-refresh", "old-refresh")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessToken", is("access")))
             .andExpect(jsonPath("$.tokenType", is("Bearer")))

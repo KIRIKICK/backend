@@ -3,6 +3,7 @@ package org.kirikick.api.auth.controller;
 import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.common.exception.DomainException;
+import org.kirikick.api.common.exception.ErrorCode;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,7 +18,7 @@ public class AuthExceptionHandler {
         .body(new AuthErrorResponse(exception.getErrorCode().toString(), exception.getMessage()));
   }
 
-  private static HttpStatus status(org.kirikick.api.common.exception.ErrorCode errorCode) {
+  private static HttpStatus status(ErrorCode errorCode) {
     if (!(errorCode instanceof AuthErrorCode code)) {
       return HttpStatus.BAD_REQUEST;
     }

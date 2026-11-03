@@ -1,5 +1,6 @@
 package org.kirikick.api.auth.service;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.LoginSession;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
@@ -38,7 +40,7 @@ class LoginSessionServiceTest {
     when(user.getId()).thenReturn(17L);
     when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
 
-    service.authorize(token);
+    assertThatCode(() -> service.authorize(token)).doesNotThrowAnyException();
 
     verify(sessions).findActive("sid", uuid);
   }
@@ -67,8 +69,7 @@ class LoginSessionServiceTest {
     assertCode(() -> service.authorize(token), AuthErrorCode.ACCOUNT_INACTIVE);
   }
 
-  private void assertCode(
-      org.assertj.core.api.ThrowableAssert.ThrowingCallable action, AuthErrorCode expected) {
+  private void assertCode(ThrowingCallable action, AuthErrorCode expected) {
     assertThatThrownBy(action)
         .isInstanceOf(DomainException.class)
         .extracting(exception -> ((DomainException) exception).getErrorCode())

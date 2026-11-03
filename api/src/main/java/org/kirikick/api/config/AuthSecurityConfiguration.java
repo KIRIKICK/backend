@@ -2,6 +2,7 @@ package org.kirikick.api.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
@@ -147,7 +148,7 @@ public class AuthSecurityConfiguration {
       ObjectMapper objectMapper,
       HttpStatus status,
       AuthErrorCode code)
-      throws java.io.IOException {
+      throws IOException {
     AuthHttpSupport.writeError(
         response,
         objectMapper,
