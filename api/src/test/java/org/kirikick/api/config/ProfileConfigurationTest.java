@@ -235,6 +235,17 @@ class ProfileConfigurationTest {
         });
   }
 
+  @ParameterizedTest
+  @CsvSource({"local,true", "dev,true", "prod,false", "test,false"})
+  void exposesApiDocumentationOnlyInLocalAndDev(String profile, String enabled) {
+    profileConfiguration(profile, "spring.config.import=")
+        .run(context -> {
+          Environment environment = context.getEnvironment();
+          assertThat(environment.getProperty("springdoc.api-docs.enabled")).isEqualTo(enabled);
+          assertThat(environment.getProperty("springdoc.swagger-ui.enabled")).isEqualTo(enabled);
+        });
+  }
+
   private static ApplicationContextRunner configuration(String... properties) {
     return new ApplicationContextRunner()
         .withInitializer(new ConfigDataApplicationContextInitializer())

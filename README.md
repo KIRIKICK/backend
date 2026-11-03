@@ -46,6 +46,15 @@ IDE에서 애플리케이션을 직접 실행할 때도 작업 디렉터리를 `
 테스트는 Docker가 필요하지만 외부 DB URL이나 `.env` 값을 사용하지 않습니다. 자세한 실행 방법은
 [JPA 테스트 설정](api/src/test/README.md)을 참고하세요.
 
+## API 문서
+
+애플리케이션 실행 후 `local`·`dev` 프로필에서만 문서를 제공합니다. `prod` 및 그 외 프로필에서는 문서 생성과 접근을 차단합니다.
+
+- Swagger UI: `/swagger-ui.html`
+- OpenAPI JSON: `/v3/api-docs`
+
+Refresh API의 Origin·CSRF·쿠키 검증은 Swagger에서도 동일하게 적용됩니다. 브라우저가 Origin과 HttpOnly 쿠키를 관리하므로, Swagger 입력란만으로 인증 흐름을 재현하거나 검증을 우회할 수 없습니다.
+
 ## 실행 프로필과 DB
 
 | 프로필 | 연결 대상 | 설정 |

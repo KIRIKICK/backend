@@ -31,6 +31,12 @@ auth:
     private-key-location: ${AUTH_JWT_PRIVATE_KEY_LOCATION}
     public-key-location: ${AUTH_JWT_PUBLIC_KEY_LOCATION}
 
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 server:
   port: ${PORT:8080}
 

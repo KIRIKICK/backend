@@ -13,6 +13,8 @@ import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.user.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -48,8 +50,12 @@ public class AuthSecurityConfiguration {
       JwtDecoder jwtDecoder,
       LoginSessionService sessions,
       AuthProperties properties,
+      Environment environment,
       ObjectMapper objectMapper)
       throws Exception {
+    boolean documentationEnabled =
+        !environment.acceptsProfiles(Profiles.of("prod"))
+            && environment.acceptsProfiles(Profiles.of("local", "dev"));
     NullSecurityContextRepository noSecurityContext = new NullSecurityContextRepository();
     CookieCsrfTokenRepository csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
     csrf.setCookieHttpOnly(true);
@@ -84,12 +90,20 @@ public class AuthSecurityConfiguration {
             csrfConfig
                 .csrfTokenRepository(csrf)
                 .csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler()))
-        .authorizeHttpRequests(authorize ->
-            authorize
-                .requestMatchers("/actuator/health/**", "/auth/csrf", "/auth/refresh")
-                .permitAll()
-                .anyRequest()
-                .authenticated())
+        .authorizeHttpRequests(authorize -> {
+          var documentation =
+              authorize.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html");
+          if (documentationEnabled) {
+            documentation.permitAll();
+          } else {
+            documentation.denyAll();
+          }
+          authorize
+              .requestMatchers("/actuator/health/**", "/auth/csrf", "/auth/refresh")
+              .permitAll()
+              .anyRequest()
+              .authenticated();
+        })
         .oauth2ResourceServer(resource ->
             resource
                 .authenticationEntryPoint((request, response, error) ->

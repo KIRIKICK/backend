@@ -227,6 +227,16 @@ class AuthBoundaryIntegrationTest {
         .andExpect(jsonPath("$.code").value("AUTH_STATE_UNAVAILABLE"));
   }
 
+  @Test
+  void deniesApiDocumentationOutsideLocalAndDevEvenWithAValidAccessToken() throws Exception {
+    LoginGrant grant = logins.login(users.saveAndFlush(User.create("문서검증", null)));
+    for (String path :
+        new String[] {"/v3/api-docs", "/swagger-ui/index.html", "/swagger-ui.html"}) {
+      mvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + grant.accessToken()))
+          .andExpect(status().isForbidden());
+    }
+  }
+
   private ResultActions refresh(String raw, Cookie csrf, String masked, String origin)
       throws Exception {
     return mvc.perform(
