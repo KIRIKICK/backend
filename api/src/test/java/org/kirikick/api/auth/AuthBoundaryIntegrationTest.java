@@ -193,7 +193,8 @@ class AuthBoundaryIntegrationTest {
                     .header(HttpHeaders.ORIGIN, "http://LOCALHOST:5173")
                     .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
                     .header(
-                        HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type, X-XSRF-TOKEN"))
+                        HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                        "Content-Type, X-XSRF-TOKEN, Authorization"))
             .andExpect(status().isOk())
             .andReturn();
     assertThat(accepted.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
@@ -201,6 +202,8 @@ class AuthBoundaryIntegrationTest {
         .isNotEqualTo("*");
     assertThat(accepted.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS))
         .isEqualTo("true");
+    assertThat(accepted.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS))
+        .contains("Content-Type", "X-XSRF-TOKEN", "Authorization");
 
     for (String origin :
         new String[] {

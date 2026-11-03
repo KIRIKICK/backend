@@ -78,6 +78,7 @@ public class AuthSecurityConfiguration {
     cors.addAllowedOrigin(properties.feOrigin());
     cors.addAllowedHeader("Content-Type");
     cors.addAllowedHeader("X-XSRF-TOKEN");
+    cors.addAllowedHeader("Authorization");
     cors.addAllowedMethod("GET");
     cors.addAllowedMethod("POST");
     UrlBasedCorsConfigurationSource corsSource = new UrlBasedCorsConfigurationSource();
