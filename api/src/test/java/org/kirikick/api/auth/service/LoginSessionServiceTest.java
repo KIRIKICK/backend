@@ -46,6 +46,27 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  void rejectsSessionOwnedByDifferentDatabaseUser() {
+    RedisRefreshSessionStore sessions = mock(RedisRefreshSessionStore.class);
+    JwtTokenService jwt = mock(JwtTokenService.class);
+    UserRepository users = mock(UserRepository.class);
+    LoginSessionService service = new LoginSessionService(sessions, jwt, users);
+    UUID uuid = UUID.randomUUID();
+    LoginSession session =
+        new LoginSession("sid", 17L, uuid, Instant.EPOCH, Instant.MAX, Instant.MAX);
+    Jwt token = mock(Jwt.class);
+    User user = mock(User.class);
+    when(token.getSubject()).thenReturn(uuid.toString());
+    when(token.getClaimAsString("sid")).thenReturn("sid");
+    when(sessions.findActive("sid", uuid)).thenReturn(Optional.of(session));
+    when(users.findByUuid(uuid)).thenReturn(Optional.of(user));
+    when(user.getId()).thenReturn(18L);
+    when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
+
+    assertCode(() -> service.authorize(token), AuthErrorCode.AUTHENTICATION_REQUIRED);
+  }
+
+  @Test
   void rejectsMissingSessionAndInactiveUser() {
     RedisRefreshSessionStore sessions = mock(RedisRefreshSessionStore.class);
     JwtTokenService jwt = mock(JwtTokenService.class);
