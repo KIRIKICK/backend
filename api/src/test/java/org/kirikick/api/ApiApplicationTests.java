@@ -11,16 +11,24 @@ import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.kirikick.api.auth.support.AuthTestSettings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ApiApplicationTests {
+
+  @DynamicPropertySource
+  static void authSettings(DynamicPropertyRegistry registry) {
+    AuthTestSettings.register(registry);
+  }
 
   @Autowired private MockMvc mockMvc;
   @Autowired private EntityManagerFactory entityManagerFactory;

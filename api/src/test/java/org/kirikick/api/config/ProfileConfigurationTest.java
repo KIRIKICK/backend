@@ -230,8 +230,19 @@ class ProfileConfigurationTest {
           assertThat(environment.getProperty("management.endpoint.health.group.liveness.include"))
               .isEqualTo("livenessState");
           assertThat(environment.getProperty("management.endpoint.health.group.readiness.include"))
-              .isEqualTo("readinessState,db");
-          assertThat(environment.getProperty("management.health.redis.enabled")).isEqualTo("false");
+              .isEqualTo("readinessState,db,redis");
+          assertThat(environment.getProperty("management.health.redis.enabled")).isEqualTo("true");
+        });
+  }
+
+  @ParameterizedTest
+  @CsvSource({"local,true", "dev,true", "prod,false", "test,false"})
+  void exposesApiDocumentationOnlyInLocalAndDev(String profile, String enabled) {
+    profileConfiguration(profile, "spring.config.import=")
+        .run(context -> {
+          Environment environment = context.getEnvironment();
+          assertThat(environment.getProperty("springdoc.api-docs.enabled")).isEqualTo(enabled);
+          assertThat(environment.getProperty("springdoc.swagger-ui.enabled")).isEqualTo(enabled);
         });
   }
 
