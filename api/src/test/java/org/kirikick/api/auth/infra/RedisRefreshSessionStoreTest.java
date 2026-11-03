@@ -21,6 +21,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -162,8 +163,7 @@ class RedisRefreshSessionStoreTest {
 
     String usedKey =
         redis.keys().stream().filter(key -> key.contains(":used:")).findFirst().orElseThrow();
-    Long usedTtlMillis =
-        redis.template().getExpire(usedKey, java.util.concurrent.TimeUnit.MILLISECONDS);
+    Long usedTtlMillis = redis.template().getExpire(usedKey, TimeUnit.MILLISECONDS);
     assertThat(usedTtlMillis).isGreaterThan(Duration.ofDays(13).toMillis());
   }
 
@@ -291,8 +291,7 @@ class RedisRefreshSessionStoreTest {
     assertThat(third.session().expiresAt()).isEqualTo(third.session().absoluteExpiresAt());
     String currentKey =
         redis.keys().stream().filter(key -> key.contains(":current:")).findFirst().orElseThrow();
-    Long currentTtl =
-        redis.template().getExpire(currentKey, java.util.concurrent.TimeUnit.MILLISECONDS);
+    Long currentTtl = redis.template().getExpire(currentKey, TimeUnit.MILLISECONDS);
     assertThat(currentTtl).isLessThanOrEqualTo(Duration.ofDays(2).toMillis());
     assertThatThrownBy(
             () -> storeAt(Duration.ofDays(14).plusMillis(1)).rotate(third.refreshToken()))
