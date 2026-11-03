@@ -3,6 +3,7 @@ package org.kirikick.api.auth.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -37,6 +38,9 @@ class OriginValidationFilterTest {
           });
       assertThat(deniedResponse.getStatus()).isEqualTo(403);
       assertThat(deniedResponse.getContentAsString()).contains("AUTHENTICATION_REQUIRED");
+      String body = new String(deniedResponse.getContentAsByteArray(), StandardCharsets.UTF_8);
+      assertThat(new ObjectMapper().readTree(body).get("message").asText())
+          .isEqualTo("허용되지 않은 출처입니다.");
     }
   }
 

@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.service.LoginSessionService;
@@ -50,10 +51,7 @@ public final class SessionAuthorizationFilter extends OncePerRequestFilter {
             : code == AuthErrorCode.ACCOUNT_INACTIVE
                 ? HttpServletResponse.SC_FORBIDDEN
                 : HttpServletResponse.SC_UNAUTHORIZED;
-    response.setStatus(status);
-    response.setContentType("application/json");
-    response.setHeader("Cache-Control", "no-store");
-    objectMapper.writeValue(
-        response.getWriter(), new AuthErrorResponse(code.toString(), code.getMessage()));
+    AuthHttpSupport.writeError(
+        response, objectMapper, status, new AuthErrorResponse(code.toString(), code.getMessage()));
   }
 }

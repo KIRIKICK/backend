@@ -147,10 +147,10 @@ public class AuthSecurityConfiguration {
       HttpStatus status,
       AuthErrorCode code)
       throws java.io.IOException {
-    response.setStatus(status.value());
-    response.setContentType("application/json");
-    response.setHeader("Cache-Control", "no-store");
-    objectMapper.writeValue(
-        response.getWriter(), new AuthErrorResponse(code.name(), code.getMessage()));
+    AuthHttpSupport.writeError(
+        response,
+        objectMapper,
+        status.value(),
+        new AuthErrorResponse(code.name(), code.getMessage()));
   }
 }

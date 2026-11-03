@@ -7,10 +7,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
+import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 public final class OriginValidationFilter extends OncePerRequestFilter {
@@ -36,11 +36,10 @@ public final class OriginValidationFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     String origin = request.getHeader(HttpHeaders.ORIGIN);
     if (origin == null || !allowedOrigin.equals(canonicalOriginOrNull(origin))) {
-      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-      response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-      objectMapper.writeValue(
-          response.getWriter(),
+      AuthHttpSupport.writeError(
+          response,
+          objectMapper,
+          HttpServletResponse.SC_FORBIDDEN,
           new AuthErrorResponse(AuthErrorCode.AUTHENTICATION_REQUIRED.name(), "허용되지 않은 출처입니다."));
       return;
     }

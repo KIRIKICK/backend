@@ -1,9 +1,14 @@
 package org.kirikick.api.auth.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 
 public final class AuthHttpSupport {
@@ -13,6 +18,16 @@ public final class AuthHttpSupport {
 
   public AuthHttpSupport(boolean secureCookies) {
     this.secureCookies = secureCookies;
+  }
+
+  public static void writeError(
+      HttpServletResponse response, ObjectMapper objectMapper, int status, AuthErrorResponse error)
+      throws IOException {
+    response.setStatus(status);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+    objectMapper.writeValue(response.getWriter(), error);
   }
 
   public void writeRefresh(HttpServletResponse response, LoginGrant grant) {
