@@ -1,11 +1,6 @@
 package org.kirikick.api.auth.service;
 
-import java.sql.SQLException;
-import java.sql.SQLTransientConnectionException;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.kirikick.api.auth.domain.IssuedSession;
 import org.kirikick.api.auth.domain.LoginGrant;
@@ -19,13 +14,6 @@ import org.kirikick.api.user.domain.UserStatus;
 import org.kirikick.api.user.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.ConcurrencyFailureException;
-import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.InvalidDataAccessApiUsageException;
-import org.springframework.dao.InvalidDataAccessResourceUsageException;
-import org.springframework.dao.QueryTimeoutException;
-import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 public class LoginSessionService {
@@ -114,56 +102,11 @@ public class LoginSessionService {
   }
 
   private RuntimeException unavailableIfRecognized(RuntimeException exception) {
-    if (!isAvailabilityFailure(exception)) {
+    if (!AuthStateAvailability.isFailure(exception)) {
       return exception;
     }
     log.warn(DB_UNAVAILABLE_LOG, exception.getClass().getName());
     return new DomainException(AuthErrorCode.AUTH_STATE_UNAVAILABLE);
-  }
-
-  private static boolean isAvailabilityFailure(RuntimeException exception) {
-    boolean queryTimeout = false;
-    boolean allowedSqlState = false;
-    boolean transientConnectionWithoutSqlState = false;
-    boolean unsupportedSqlState = false;
-    boolean resourceFailure = false;
-    Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-    for (Throwable current = exception;
-        current != null && visited.add(current);
-        current = current.getCause()) {
-      if (isSemanticNegative(current)) {
-        return false;
-      }
-      queryTimeout |= current instanceof QueryTimeoutException;
-      transientConnectionWithoutSqlState |=
-          current instanceof SQLTransientConnectionException connectionException
-              && connectionException.getSQLState() == null;
-      resourceFailure |=
-          current instanceof DataAccessResourceFailureException
-              || current instanceof TransientDataAccessResourceException;
-      if (current instanceof SQLException sqlException && sqlException.getSQLState() != null) {
-        String sqlState = sqlException.getSQLState();
-        if (sqlState.startsWith("08") || sqlState.equals("53300") || sqlState.equals("57P03")) {
-          allowedSqlState = true;
-        } else {
-          unsupportedSqlState = true;
-        }
-      }
-    }
-    if (queryTimeout || allowedSqlState || transientConnectionWithoutSqlState) {
-      return true;
-    }
-    if (unsupportedSqlState) {
-      return false;
-    }
-    return resourceFailure;
-  }
-
-  private static boolean isSemanticNegative(Throwable exception) {
-    return exception instanceof DataIntegrityViolationException
-        || exception instanceof InvalidDataAccessResourceUsageException
-        || exception instanceof InvalidDataAccessApiUsageException
-        || exception instanceof ConcurrencyFailureException;
   }
 
   private void revokeAfterFailure(String sessionId) {
