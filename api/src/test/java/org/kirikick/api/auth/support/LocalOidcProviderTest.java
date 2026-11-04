@@ -49,6 +49,32 @@ class LocalOidcProviderTest {
   }
 
   @Test
+  void rejectsAnAuthorizationWithoutPkceParametersEvenWhenTheTokenRequestOmitsVerifier()
+      throws Exception {
+    try (LocalOidcProvider provider = LocalOidcProvider.start()) {
+      String code = authorizeWithoutPkce(provider, "nonce-value");
+
+      HttpResponse<String> response = tokenWithoutVerifier(provider, code);
+
+      assertThat(response.statusCode()).isEqualTo(400);
+      assertThat(response.body()).contains("invalid_grant");
+    }
+  }
+
+  @Test
+  void rejectsAnAuthorizationWithAnUnsupportedPkceMethod() throws Exception {
+    try (LocalOidcProvider provider = LocalOidcProvider.start()) {
+      String verifier = "fixture-verifier";
+      String code = authorize(provider, "nonce-value", pkce(verifier), "plain");
+
+      HttpResponse<String> response = token(provider, code, verifier);
+
+      assertThat(response.statusCode()).isEqualTo(400);
+      assertThat(response.body()).contains("invalid_grant");
+    }
+  }
+
+  @Test
   void rejectsATokenRequestWhoseVerifierDoesNotMatchTheAuthorizationChallenge() throws Exception {
     try (LocalOidcProvider provider = LocalOidcProvider.start()) {
       String code = authorize(provider, "nonce-value", pkce("expected-verifier"));
@@ -84,6 +110,11 @@ class LocalOidcProviderTest {
 
   private static String authorize(LocalOidcProvider provider, String nonce, String challenge)
       throws Exception {
+    return authorize(provider, nonce, challenge, "S256");
+  }
+
+  private static String authorize(
+      LocalOidcProvider provider, String nonce, String challenge, String method) throws Exception {
     String query =
         form(
             Map.of(
@@ -100,7 +131,32 @@ class LocalOidcProviderTest {
                 "code_challenge",
                 challenge,
                 "code_challenge_method",
-                "S256"));
+                method));
+    HttpResponse<Void> response =
+        HTTP.send(
+            HttpRequest.newBuilder(URI.create(provider.authorizationUri() + "?" + query))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.discarding());
+    assertThat(response.statusCode()).isEqualTo(302);
+    return queryValue(response.headers().firstValue("Location").orElseThrow(), "code");
+  }
+
+  private static String authorizeWithoutPkce(LocalOidcProvider provider, String nonce)
+      throws Exception {
+    String query =
+        form(
+            Map.of(
+                "response_type",
+                "code",
+                "client_id",
+                LocalOidcProvider.CLIENT_ID,
+                "redirect_uri",
+                LocalOidcProvider.REDIRECT_URI,
+                "state",
+                "state-value",
+                "nonce",
+                nonce));
     HttpResponse<Void> response =
         HTTP.send(
             HttpRequest.newBuilder(URI.create(provider.authorizationUri() + "?" + query))
@@ -132,6 +188,29 @@ class LocalOidcProviderTest {
                             LocalOidcProvider.CLIENT_SECRET,
                             "code_verifier",
                             verifier))))
+            .build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> tokenWithoutVerifier(LocalOidcProvider provider, String code)
+      throws Exception {
+    return HTTP.send(
+        HttpRequest.newBuilder(provider.tokenUri())
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(
+                HttpRequest.BodyPublishers.ofString(
+                    form(
+                        Map.of(
+                            "grant_type",
+                            "authorization_code",
+                            "code",
+                            code,
+                            "redirect_uri",
+                            LocalOidcProvider.REDIRECT_URI,
+                            "client_id",
+                            LocalOidcProvider.CLIENT_ID,
+                            "client_secret",
+                            LocalOidcProvider.CLIENT_SECRET))))
             .build(),
         HttpResponse.BodyHandlers.ofString());
   }

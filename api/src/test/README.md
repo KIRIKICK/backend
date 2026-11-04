@@ -27,7 +27,7 @@ class UserRepositoryTest {}
 ./gradlew :api:test --tests 'org.kirikick.api.auth.*' --rerun-tasks
 ```
 
-명령은 `backend` 디렉터리에서 실행한다. OAuth의 실제 카카오/HTTPS 및 지정 DEV Redis smoke는 이 테스트 범위가 아닌 배포 gate다. 상세 운영 정책은 [AUTH 도메인 문서](../../../docs/domain/auth.md), HTTP 계약은 [AUTH API 구현 계약](../../../../docs/api/auth-api-spec.md)을 참고한다.
+명령은 `backend` 디렉터리에서 실행한다. OAuth의 실제 카카오/HTTPS 및 지정 DEV Redis smoke는 이 테스트 범위가 아닌 배포 gate다. 상세 운영 정책은 [AUTH 도메인 문서](../../../docs/domain/auth.md)를 참고한다.
 
 ## Local OIDC callback
 

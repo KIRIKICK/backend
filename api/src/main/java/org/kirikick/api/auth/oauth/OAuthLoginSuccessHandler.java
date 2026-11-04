@@ -82,10 +82,31 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
     }
 
     OidcUser principal = (OidcUser) authentication.getPrincipal();
-    Optional<OAuthIdentity> identity =
-        identities.findByProviderAndProviderSubject(OAuthProvider.KAKAO, principal.getSubject());
+    Optional<OAuthIdentity> identity;
+    User user;
+    try {
+      identity =
+          identities.findByProviderAndProviderSubject(OAuthProvider.KAKAO, principal.getSubject());
+      user = identity.isPresent() ? users.findById(identity.get().getUserId()).orElse(null) : null;
+    } catch (RuntimeException exception) {
+      if (!AuthStateAvailability.isFailure(exception)) {
+        throw exception;
+      }
+      try {
+        endOAuthFlowAndInvalidateSession(request, flow, claimId);
+      } catch (RuntimeException ignored) {
+        // Keep the lookup failure response; Redis TTL bounds any unresolved claim.
+      }
+      AuthHttpSupport.writeError(
+          response,
+          objectMapper,
+          HttpStatus.SERVICE_UNAVAILABLE.value(),
+          new AuthErrorResponse(
+              AuthErrorCode.AUTH_STATE_UNAVAILABLE.name(),
+              AuthErrorCode.AUTH_STATE_UNAVAILABLE.getMessage()));
+      return;
+    }
     if (identity.isPresent()) {
-      User user = users.findById(identity.get().getUserId()).orElse(null);
       if (!endOAuthFlowAndInvalidateSession(request, flow, claimId)) {
         redirect(response, "ERROR&errorCode=OAUTH_FAILED");
         return;

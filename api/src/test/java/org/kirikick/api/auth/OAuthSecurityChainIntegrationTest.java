@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.kirikick.api.ApiApplication;
+import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
@@ -41,6 +42,7 @@ import org.kirikick.api.auth.onboarding.OnboardingProof;
 import org.kirikick.api.auth.onboarding.OnboardingSessionProofs;
 import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.auth.repository.SignupApplicationRepository;
+import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.service.SignupApplicationPublicationService;
 import org.kirikick.api.auth.support.AuthTestSettings;
 import org.kirikick.api.auth.support.LocalOidcProvider;
@@ -86,6 +88,7 @@ class OAuthSecurityChainIntegrationTest {
   @Autowired private MockMvc mvc;
   @Autowired private UserRepository users;
   @Autowired private OAuthIdentityRepository identities;
+  @Autowired private LoginSessionService logins;
 
   @Autowired private SignupApplicationRepository applications;
   @Autowired private Environment environment;
@@ -132,7 +135,11 @@ class OAuthSecurityChainIntegrationTest {
 
     assertThat(result.getResponse().getRedirectedUrl())
         .isEqualTo("http://localhost:5173/auth/kakao/callback?result=AUTHENTICATED");
-    assertThat(result.getResponse().getCookie("dev-refresh")).isNotNull();
+    Cookie refresh = result.getResponse().getCookie("dev-refresh");
+    assertThat(refresh).isNotNull();
+    LoginGrant grant = logins.refresh(refresh.getValue());
+    assertThat(grant.session().userId()).isEqualTo(user.getId());
+    assertThat(grant.session().userUuid()).isEqualTo(user.getUuid());
     assertThat(OIDC.authorization().codeChallengeMethod()).isEqualTo("S256");
     assertThat(OIDC.tokenRequest().codeVerifier()).isNotBlank();
     assertThat(OIDC.tokenRequest().clientSecretPost()).isTrue();

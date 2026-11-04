@@ -23,7 +23,6 @@ backend/
 
 - [USER: 회원 프로필](docs/domain/user.md)
 - [AUTH: 인증 상태·Redis 운영 정책](docs/domain/auth.md)
-- [AUTH API 구현 계약](../docs/api/auth-api-spec.md)
 
 ## 실행과 검증
 

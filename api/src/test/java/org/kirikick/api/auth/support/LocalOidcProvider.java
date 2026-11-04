@@ -181,7 +181,9 @@ public final class LocalOidcProvider implements AutoCloseable {
         || !CLIENT_ID.equals(form.get("client_id"))
         || !CLIENT_SECRET.equals(form.get("client_secret"))
         || !Objects.equals(saved.redirectUri(), form.get("redirect_uri"))
-        || !Objects.equals(saved.codeChallenge(), pkceChallenge(form.get("code_verifier")))) {
+        || saved.codeChallenge() == null
+        || !"S256".equals(saved.codeChallengeMethod())
+        || !saved.codeChallenge().equals(pkceChallenge(form.get("code_verifier")))) {
       json(exchange, 400, Map.of("error", "invalid_grant"));
       return;
     }
