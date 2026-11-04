@@ -1,7 +1,9 @@
 package org.kirikick.api.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.controller.dto.ProbeResponse;
@@ -29,6 +33,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -50,7 +55,7 @@ class AuthBoundaryIntegrationTest {
   @Autowired private ObjectMapper json;
   @Autowired private LoginSessionService logins;
   @Autowired private JwtTokenService tokens;
-  @Autowired private UserRepository users;
+  @MockitoSpyBean private UserRepository users;
   @MockitoSpyBean private RedisRefreshSessionStore sessions;
 
   @DynamicPropertySource
@@ -133,6 +138,107 @@ class AuthBoundaryIntegrationTest {
         .andExpect(status().isUnauthorized());
     mvc.perform(get("/test/protected").header("Authorization", "Bearer " + access))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void exactRefreshReplayIsRejectedBeforeTheMemberGate() throws Exception {
+    LoginGrant initial = logins.login(users.saveAndFlush(User.create("재사용우선", null)));
+    MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
+    Cookie csrfCookie = csrf.getResponse().getCookie("dev-csrf");
+    String masked = json.readTree(csrf.getResponse().getContentAsString()).get("token").asText();
+
+    refresh(initial.refreshToken(), csrfCookie, masked, "http://localhost:5173")
+        .andExpect(status().isOk());
+    doThrow(new QueryTimeoutException("member lookup unavailable"))
+        .when(users)
+        .findByUuid(initial.session().userUuid());
+    try {
+      refresh(initial.refreshToken(), csrfCookie, masked, "http://localhost:5173")
+          .andExpect(status().isUnauthorized())
+          .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSED"));
+    } finally {
+      reset(users);
+    }
+  }
+
+  @Test
+  void refreshRejectsMissingOrMismatchedMembersWithoutIssuingAnotherCookie() throws Exception {
+    User member = users.saveAndFlush(User.create("회원검증", null));
+    LoginGrant missingMember = logins.login(member);
+    MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
+    Cookie csrfCookie = csrf.getResponse().getCookie("dev-csrf");
+    String masked = json.readTree(csrf.getResponse().getContentAsString()).get("token").asText();
+
+    doReturn(Optional.empty()).when(users).findByUuid(member.getUuid());
+    try {
+      assertRefreshAuthenticationRequired(missingMember.refreshToken(), csrfCookie, masked);
+    } finally {
+      reset(users);
+    }
+
+    LoginGrant mismatchedMember = logins.login(member);
+    doReturn(Optional.of(User.create("다른회원", null))).when(users).findByUuid(member.getUuid());
+    try {
+      assertRefreshAuthenticationRequired(mismatchedMember.refreshToken(), csrfCookie, masked);
+    } finally {
+      reset(users);
+    }
+  }
+
+  @Test
+  void refreshRejectsEveryInactiveMemberStatusWithoutIssuingAnotherCookie() throws Exception {
+    for (UserStatus inactive :
+        List.of(UserStatus.WITHDRAWN, UserStatus.SUSPENDED, UserStatus.BANNED)) {
+      User member = users.saveAndFlush(User.create("비활성" + inactive, null));
+      LoginGrant grant = logins.login(member);
+      ReflectionTestUtils.setField(member, "status", inactive);
+      users.saveAndFlush(member);
+      MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
+      Cookie csrfCookie = csrf.getResponse().getCookie("dev-csrf");
+      String masked = json.readTree(csrf.getResponse().getContentAsString()).get("token").asText();
+
+      MvcResult result =
+          refresh(grant.refreshToken(), csrfCookie, masked, "http://localhost:5173")
+              .andExpect(status().isForbidden())
+              .andExpect(jsonPath("$.code").value("ACCOUNT_INACTIVE"))
+              .andReturn();
+      assertThat(result.getResponse().getHeaders(HttpHeaders.SET_COOKIE))
+          .noneMatch(value -> value.startsWith("dev-refresh="));
+    }
+  }
+
+  @Test
+  void memberLookupOutageRejectsRefreshAndAnOtherwiseValidAccessToken() throws Exception {
+    User refreshMember = users.saveAndFlush(User.create("DB장애Refresh", null));
+    LoginGrant refreshGrant = logins.login(refreshMember);
+    User protectedMember = users.saveAndFlush(User.create("DB장애보호", null));
+    LoginGrant protectedGrant = logins.login(protectedMember);
+    MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
+    Cookie csrfCookie = csrf.getResponse().getCookie("dev-csrf");
+    String masked = json.readTree(csrf.getResponse().getContentAsString()).get("token").asText();
+    doThrow(new QueryTimeoutException("member lookup unavailable"))
+        .when(users)
+        .findByUuid(refreshMember.getUuid());
+    doThrow(new QueryTimeoutException("member lookup unavailable"))
+        .when(users)
+        .findByUuid(protectedMember.getUuid());
+    try {
+      MvcResult refresh =
+          refresh(refreshGrant.refreshToken(), csrfCookie, masked, "http://localhost:5173")
+              .andExpect(status().isServiceUnavailable())
+              .andExpect(jsonPath("$.code").value("AUTH_STATE_UNAVAILABLE"))
+              .andReturn();
+      assertThat(refresh.getResponse().getHeaders(HttpHeaders.SET_COOKIE))
+          .noneMatch(value -> value.startsWith("dev-refresh="));
+
+      mvc.perform(
+              get("/test/protected")
+                  .header("Authorization", "Bearer " + protectedGrant.accessToken()))
+          .andExpect(status().isServiceUnavailable())
+          .andExpect(jsonPath("$.code").value("AUTH_STATE_UNAVAILABLE"));
+    } finally {
+      reset(users);
+    }
   }
 
   @Test
@@ -247,6 +353,17 @@ class AuthBoundaryIntegrationTest {
             .cookie(csrf, new Cookie("dev-refresh", raw))
             .header("Origin", origin)
             .header("X-XSRF-TOKEN", masked));
+  }
+
+  private void assertRefreshAuthenticationRequired(String raw, Cookie csrfCookie, String masked)
+      throws Exception {
+    MvcResult result =
+        refresh(raw, csrfCookie, masked, "http://localhost:5173")
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
+            .andReturn();
+    assertThat(result.getResponse().getHeaders(HttpHeaders.SET_COOKIE))
+        .noneMatch(value -> value.startsWith("dev-refresh="));
   }
 
   @TestComponent
