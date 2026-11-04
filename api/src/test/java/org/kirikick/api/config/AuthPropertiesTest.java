@@ -13,7 +13,7 @@ import org.springframework.core.io.ByteArrayResource;
 class AuthPropertiesTest {
 
   @Test
-  void rejectsMissingSigningConfiguration() {
+  void rejectsMissingSigningAndProviderConfiguration() {
     new ApplicationContextRunner()
         .withUserConfiguration(Binding.class)
         .run(context -> assertThat(context.getStartupFailure()).isNotNull());
@@ -52,6 +52,12 @@ class AuthPropertiesTest {
     }
   }
 
+  @Test
+  void providerSettingsNeverPrintTheClientSecret() {
+    assertThat(properties("test:auth", "test:session", "http://localhost:5173").toString())
+        .doesNotContain("test-client-secret");
+  }
+
   private AuthProperties properties(String authNamespace, String sessionNamespace, String origin) {
     var key = new ByteArrayResource(new byte[0]);
     return new AuthProperties(
@@ -59,7 +65,15 @@ class AuthPropertiesTest {
         sessionNamespace,
         origin,
         false,
-        new AuthProperties.Jwt("https://api.example", "kirikick", key, key));
+        new AuthProperties.Jwt("https://api.example", "kirikick", key, key),
+        new AuthProperties.Kakao(
+            "test-client",
+            "test-client-secret",
+            "http://localhost/login/oauth2/code/kakao",
+            "https://kauth.kakao.com",
+            "https://kauth.kakao.com/oauth/authorize",
+            "https://kauth.kakao.com/oauth/token",
+            "https://kauth.kakao.com/.well-known/jwks.json"));
   }
 
   @Configuration(proxyBeanMethods = false)

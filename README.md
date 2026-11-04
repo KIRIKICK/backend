@@ -22,6 +22,7 @@ backend/
 도메인별 구현 정책은 `docs/domain/`에서 관리합니다.
 
 - [USER: 회원 프로필](docs/domain/user.md)
+- [AUTH: 인증 상태·Redis 운영 정책](docs/domain/auth.md)
 
 ## 실행과 검증
 
@@ -56,6 +57,8 @@ IDE에서 애플리케이션을 직접 실행할 때도 작업 디렉터리를 `
 Refresh API의 Origin·CSRF·쿠키 검증은 Swagger에서도 동일하게 적용됩니다. 브라우저가 Origin과 HttpOnly 쿠키를 관리하므로, Swagger 입력란만으로 인증 흐름을 재현하거나 검증을 우회할 수 없습니다.
 
 ## 실행 프로필과 DB
+
+OAuth·Spring Session·SignupApplication 발행 설정은 [.env.example](.env.example)을 참고합니다. 실제 secret은 커밋하지 않습니다. 실제 카카오/HTTPS 등 외부 rollout gate는 AUTH 문서에 구분합니다.
 
 | 프로필 | 연결 대상 | 설정 |
 | --- | --- | --- |
@@ -105,9 +108,8 @@ Hikari 풀 기본값은 인스턴스당 최대 `5`, 최소 유휴 `1`입니다.
 ### Health probe
 
 - `/actuator/health/liveness`: 애플리케이션 생존 상태만 확인; DB·Redis 장애는 포함하지 않음
-- `/actuator/health/readiness`: 요청 수신 준비 상태와 DB 연결 확인
+- `/actuator/health/readiness`: 요청 수신 준비 상태와 DB·Redis 연결 확인
 - 웹 노출은 `health`만 허용하고, 상세정보는 공개하지 않음
-- Redis 기능은 아직 사용하지 않으므로 health 검사에서 제외; 도입 시 연결 설정과 함께 검사 활성화
 - Cloud Run 서비스의 probe 경로 연결은 배포 설정에서 별도로 지정
 
 Hibernate는 `validate`만 수행하고 Flyway `clean`은 금지합니다. 테이블 변경은 migration으로 관리합니다.

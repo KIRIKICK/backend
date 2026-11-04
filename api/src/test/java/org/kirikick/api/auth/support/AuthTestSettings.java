@@ -28,12 +28,20 @@ public final class AuthTestSettings {
     registry.add("spring.data.redis.ssl.enabled", () -> false);
     registry.add("auth.redis-namespace", () -> namespace + ":auth");
     registry.add("auth.session-redis-namespace", () -> namespace + ":spring:session");
+    registry.add("spring.session.redis.namespace", () -> namespace + ":spring:session");
     registry.add("auth.fe-origin", () -> "http://localhost:5173");
     registry.add("auth.secure-cookies", () -> false);
     registry.add("auth.jwt.issuer", () -> "http://localhost:8080");
     registry.add("auth.jwt.audience", () -> "kirikick-test");
     registry.add("auth.jwt.private-key-location", () -> Keys.PRIVATE.toUri().toString());
     registry.add("auth.jwt.public-key-location", () -> Keys.PUBLIC.toUri().toString());
+    registry.add("auth.kakao.client-id", () -> "fixture-client");
+    registry.add("auth.kakao.client-secret", () -> "fixture-secret");
+    registry.add("auth.kakao.redirect-uri", () -> "http://localhost:8080/login/oauth2/code/kakao");
+    registry.add("auth.kakao.issuer-uri", () -> "http://127.0.0.1:9");
+    registry.add("auth.kakao.authorization-uri", () -> "http://127.0.0.1:9/authorize");
+    registry.add("auth.kakao.token-uri", () -> "http://127.0.0.1:9/token");
+    registry.add("auth.kakao.jwk-set-uri", () -> "http://127.0.0.1:9/jwks");
   }
 
   public static KeyPair keyPair() {

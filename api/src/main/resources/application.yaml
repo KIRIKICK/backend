@@ -36,6 +36,14 @@ auth:
     audience: ${AUTH_JWT_AUDIENCE}
     private-key-location: ${AUTH_JWT_PRIVATE_KEY_LOCATION}
     public-key-location: ${AUTH_JWT_PUBLIC_KEY_LOCATION}
+  kakao:
+    client-id: ${KAKAO_CLIENT_ID}
+    client-secret: ${KAKAO_CLIENT_SECRET}
+    redirect-uri: ${KAKAO_REDIRECT_URI}
+    issuer-uri: https://kauth.kakao.com
+    authorization-uri: https://kauth.kakao.com/oauth/authorize
+    token-uri: https://kauth.kakao.com/oauth/token
+    jwk-set-uri: https://kauth.kakao.com/.well-known/jwks.json
 
 springdoc:
   api-docs:

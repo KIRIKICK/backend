@@ -3,23 +3,36 @@ package org.kirikick.api.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Clock;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.infra.JwtTokenService;
 import org.kirikick.api.auth.infra.OriginValidationFilter;
+import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
 import org.kirikick.api.auth.infra.RedisRefreshSessionStore;
 import org.kirikick.api.auth.infra.SessionAuthorizationFilter;
+import org.kirikick.api.auth.infra.SessionStateUnavailableException;
+import org.kirikick.api.auth.oauth.NoopOAuth2AuthorizedClientRepository;
+import org.kirikick.api.auth.oauth.OAuthLoginFailureHandler;
+import org.kirikick.api.auth.oauth.OAuthLoginSuccessHandler;
+import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.auth.service.LoginSessionService;
+import org.kirikick.api.auth.service.SignupApplicationPublicationService;
 import org.kirikick.api.user.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.config.annotation.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
@@ -34,6 +47,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
 public class AuthSecurityConfiguration {
+
   @Bean
   LoginSessionService loginSessionService(
       RedisRefreshSessionStore sessions, JwtTokenService jwtTokens, UserRepository users) {
@@ -46,12 +60,70 @@ public class AuthSecurityConfiguration {
   }
 
   @Bean
+  OAuthLoginSuccessHandler oauthLoginSuccessHandler(
+      OAuthIdentityRepository identities,
+      UserRepository users,
+      LoginSessionService sessions,
+      SignupApplicationPublicationService publications,
+      AuthHttpSupport http,
+      ObjectMapper objectMapper,
+      RedisFlowClaimGuard guard,
+      Clock clock,
+      AuthProperties properties) {
+    return new OAuthLoginSuccessHandler(
+        identities,
+        users,
+        sessions,
+        publications,
+        http,
+        objectMapper,
+        guard,
+        clock,
+        properties.feOrigin());
+  }
+
+  @Bean
+  OAuthLoginFailureHandler oauthLoginFailureHandler(
+      RedisFlowClaimGuard guard, Clock clock, AuthProperties properties) {
+    return new OAuthLoginFailureHandler(guard, clock, properties.feOrigin());
+  }
+
+  private static ObjectPostProcessor<OAuth2AuthorizationRequestRedirectFilter>
+      oauthStartFailurePostProcessor(AuthProperties properties) {
+    return new ObjectPostProcessor<>() {
+      @Override
+      public <O extends OAuth2AuthorizationRequestRedirectFilter> O postProcess(O filter) {
+        filter.setAuthenticationFailureHandler((request, response, failure) -> {
+          Throwable cause = failure;
+          while (cause != null) {
+            if (cause instanceof SessionStateUnavailableException unavailable) {
+              throw unavailable;
+            }
+            cause = cause.getCause();
+          }
+          response.setStatus(HttpServletResponse.SC_SEE_OTHER);
+          response.setHeader("Cache-Control", "no-store");
+          response.setHeader(
+              "Location",
+              properties.feOrigin() + "/auth/kakao/callback?result=ERROR&errorCode=OAUTH_FAILED");
+        });
+        return filter;
+      }
+    };
+  }
+
+  @Bean
   SecurityFilterChain securityFilterChain(
       HttpSecurity http,
       JwtDecoder jwtDecoder,
       LoginSessionService sessions,
       AuthProperties properties,
       Environment environment,
+      AuthorizationRequestRepository<OAuth2AuthorizationRequest>
+          oauthAuthorizationRequestRepository,
+      OAuth2AuthorizationRequestResolver oauthAuthorizationRequestResolver,
+      OAuthLoginSuccessHandler oauthLoginSuccessHandler,
+      OAuthLoginFailureHandler oauthLoginFailureHandler,
       ObjectMapper objectMapper)
       throws Exception {
     boolean documentationEnabled =
@@ -101,7 +173,13 @@ public class AuthSecurityConfiguration {
             documentation.denyAll();
           }
           authorize
-              .requestMatchers("/actuator/health/**", "/auth/csrf", "/auth/refresh")
+              .requestMatchers(
+                  "/actuator/health/**",
+                  "/auth/csrf",
+                  "/auth/refresh",
+                  "/oauth2/**",
+                  "/login/oauth2/**",
+                  "/auth/signup/**")
               .permitAll()
               .anyRequest()
               .authenticated();
@@ -115,11 +193,26 @@ public class AuthSecurityConfiguration {
                         HttpStatus.UNAUTHORIZED,
                         AuthErrorCode.AUTHENTICATION_REQUIRED))
                 .jwt(jwt -> jwt.decoder(jwtDecoder)))
+        .oauth2Login(oauth ->
+            oauth
+                .withObjectPostProcessor(oauthStartFailurePostProcessor(properties))
+                .authorizedClientRepository(new NoopOAuth2AuthorizedClientRepository())
+                .authorizationEndpoint(endpoint ->
+                    endpoint
+                        .authorizationRequestRepository(oauthAuthorizationRequestRepository)
+                        .authorizationRequestResolver(oauthAuthorizationRequestResolver))
+                .successHandler(oauthLoginSuccessHandler)
+                .failureHandler(oauthLoginFailureHandler))
         .httpBasic(basic -> basic.disable())
         .formLogin(form -> form.disable())
         .logout(logout -> logout.disable())
         .sessionManagement(
-            session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // OAuth slot lifecycle performs verified fresh-session transitions; framework rotation
+            // breaks flow binding.
+            session ->
+                session
+                    .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                    .sessionFixation(fixation -> fixation.none()))
         .exceptionHandling(exception ->
             exception
                 .authenticationEntryPoint((request, response, error) ->

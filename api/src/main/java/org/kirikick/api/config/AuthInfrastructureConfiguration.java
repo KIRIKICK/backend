@@ -17,7 +17,15 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.converter.RsaKeyConverters;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.session.web.http.CookieSerializer;
@@ -26,10 +34,42 @@ import org.springframework.session.web.http.DefaultCookieSerializer;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
 public class AuthInfrastructureConfiguration {
+
+  @Bean
+  ClientRegistrationRepository clientRegistrationRepository(AuthProperties properties) {
+    AuthProperties.Kakao kakao = properties.kakao();
+    ClientRegistration registration =
+        ClientRegistration.withRegistrationId("kakao")
+            .clientId(kakao.clientId())
+            .clientSecret(kakao.clientSecret())
+            .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
+            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .redirectUri(kakao.redirectUri())
+            .scope("openid")
+            .authorizationUri(kakao.authorizationUri())
+            .tokenUri(kakao.tokenUri())
+            .jwkSetUri(kakao.jwkSetUri())
+            .issuerUri(kakao.issuerUri())
+            .userNameAttributeName("sub")
+            .clientName("Kakao")
+            .build();
+
+    return new InMemoryClientRegistrationRepository(registration);
+  }
+
   @Bean
   AuthorizationRequestRepository<OAuth2AuthorizationRequest> oauthAuthorizationRequestRepository(
       Clock clock, RedisFlowClaimGuard claims) {
     return new OAuthFlowAuthorizationRequestRepository(clock, claims);
+  }
+
+  @Bean
+  OAuth2AuthorizationRequestResolver oauthAuthorizationRequestResolver(
+      ClientRegistrationRepository clientRegistrations) {
+    DefaultOAuth2AuthorizationRequestResolver resolver =
+        new DefaultOAuth2AuthorizationRequestResolver(clientRegistrations, "/oauth2/authorization");
+    resolver.setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce());
+    return resolver;
   }
 
   @Bean
