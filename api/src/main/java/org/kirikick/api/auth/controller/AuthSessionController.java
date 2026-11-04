@@ -113,7 +113,7 @@ public class AuthSessionController {
                 schema = @Schema(implementation = TokenResponse.class))),
     @ApiResponse(
         responseCode = "401",
-        description = "Refresh Token 누락·만료·폐기 또는 재사용",
+        description = "Refresh Token 누락·만료·폐기·재사용 또는 회전 후 회원 검증 실패",
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -130,18 +130,22 @@ public class AuthSessionController {
                 })),
     @ApiResponse(
         responseCode = "403",
-        description = "Origin 또는 CSRF 검증 실패. Refresh Token은 회전하지 않음",
+        description = "Origin 또는 CSRF 검증 실패, 또는 회전 후 회원 상태가 ACTIVE가 아님",
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 schema = @Schema(implementation = AuthErrorResponse.class),
-                examples =
-                    @ExampleObject(
-                        value =
-                            "{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"인증이 필요합니다.\"}"))),
+                examples = {
+                  @ExampleObject(
+                      name = "Origin 또는 CSRF 검증 실패",
+                      value = "{\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"인증이 필요합니다.\"}"),
+                  @ExampleObject(
+                      name = "비활성 회원",
+                      value = "{\"code\":\"ACCOUNT_INACTIVE\",\"message\":\"사용할 수 없는 회원 상태입니다.\"}")
+                })),
     @ApiResponse(
         responseCode = "503",
-        description = "Redis 인증 상태를 확인할 수 없음",
+        description = "Redis 인증 상태 또는 인증용 DB 회원 조회를 사용할 수 없음",
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
