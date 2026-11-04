@@ -471,10 +471,9 @@ class SignupApplicationCompletionServicePostgresTest {
       try {
         assertThat(get(future).newlyCompleted()).isTrue();
         completed++;
-      } catch (RuntimeException expectedUniqueConstraintFailure) {
-        Throwable root = rootCause(expectedUniqueConstraintFailure);
-        assertThat(root).isInstanceOf(SQLException.class);
-        assertThat(((SQLException) root).getSQLState()).isEqualTo("23505");
+      } catch (DomainException expectedUniqueConstraintFailure) {
+        assertThat(expectedUniqueConstraintFailure.getErrorCode())
+            .isEqualTo(AuthErrorCode.OAUTH_IDENTITY_ALREADY_EXISTS);
         uniqueConstraintFailures++;
       }
     }

@@ -3,6 +3,7 @@ package org.kirikick.api.auth.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.domain.SignupApplication;
@@ -12,6 +13,7 @@ import org.kirikick.api.auth.repository.SignupApplicationRepository;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,8 +61,18 @@ public class SignupApplicationCompletionService {
       throw new DomainException(AuthErrorCode.SIGNUP_APPLICATION_EXPIRED);
     }
     User user = users.saveAndFlush(User.create(command.displayName(), null));
-    identities.saveAndFlush(
-        OAuthIdentity.create(user.getId(), command.provider(), command.providerSubject()));
+    try {
+      identities.saveAndFlush(
+          OAuthIdentity.create(user.getId(), command.provider(), command.providerSubject()));
+    } catch (DataIntegrityViolationException exception) {
+      for (Throwable cause = exception.getCause(); cause != null; cause = cause.getCause()) {
+        if (cause instanceof ConstraintViolationException violation
+            && "uk_oauth_identities_provider_subject".equals(violation.getConstraintName())) {
+          throw new DomainException(AuthErrorCode.OAUTH_IDENTITY_ALREADY_EXISTS);
+        }
+      }
+      throw exception;
+    }
     application.complete(user.getId(), command.displayName(), now);
     applications.flush();
     return new CompletionResult(application.getId(), user.getUuid(), true);

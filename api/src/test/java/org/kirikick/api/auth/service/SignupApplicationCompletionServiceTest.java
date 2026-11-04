@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -31,6 +33,7 @@ import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.repository.UserRepository;
 import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 class SignupApplicationCompletionServiceTest {
 
@@ -203,6 +206,80 @@ class SignupApplicationCompletionServiceTest {
     order.verify(fixture.users()).saveAndFlush(any(User.class));
     order.verify(fixture.identities()).saveAndFlush(any(OAuthIdentity.class));
     order.verify(fixture.applications()).flush();
+  }
+
+  @Test
+  void translatesOnlyDuplicateOAuthIdentityConstraintToDomainError() {
+    Fixture fixture = fixture();
+    SignupApplicationCompletionService.CompletionCommand command = command();
+    SignupApplication application =
+        application(
+            command.applicationId(),
+            command.provider(),
+            command.providerSubject(),
+            NOW.plusSeconds(300));
+    User user = mock(User.class);
+    when(user.getId()).thenReturn(9L);
+    when(fixture.applications().findByIdForUpdate(command.applicationId()))
+        .thenReturn(Optional.of(application));
+    when(fixture.users().saveAndFlush(any(User.class))).thenReturn(user);
+    when(fixture.identities().saveAndFlush(any(OAuthIdentity.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "identity insert failed",
+                new IllegalStateException(
+                    new ConstraintViolationException(
+                        "duplicate identity",
+                        new SQLException("duplicate identity", "23505"),
+                        "uk_oauth_identities_provider_subject"))));
+
+    assertCode(
+        () -> fixture.service().complete(command), AuthErrorCode.OAUTH_IDENTITY_ALREADY_EXISTS);
+
+    assertThat(application.isCompleted()).isFalse();
+    verify(fixture.applications(), never()).flush();
+  }
+
+  @ParameterizedTest
+  @MethodSource("otherIdentityInsertFailures")
+  void propagatesOtherIdentityInsertFailuresUnchanged(DataIntegrityViolationException failure) {
+    Fixture fixture = fixture();
+    SignupApplicationCompletionService.CompletionCommand command = command();
+    SignupApplication application =
+        application(
+            command.applicationId(),
+            command.provider(),
+            command.providerSubject(),
+            NOW.plusSeconds(300));
+    User user = mock(User.class);
+    when(user.getId()).thenReturn(9L);
+    when(fixture.applications().findByIdForUpdate(command.applicationId()))
+        .thenReturn(Optional.of(application));
+    when(fixture.users().saveAndFlush(any(User.class))).thenReturn(user);
+    when(fixture.identities().saveAndFlush(any(OAuthIdentity.class))).thenThrow(failure);
+
+    assertThatThrownBy(() -> fixture.service().complete(command)).isSameAs(failure);
+
+    assertThat(application.isCompleted()).isFalse();
+    verify(fixture.applications(), never()).flush();
+  }
+
+  private static Stream<DataIntegrityViolationException> otherIdentityInsertFailures() {
+    return Stream.of(
+        new DataIntegrityViolationException(
+            "identity insert failed",
+            new ConstraintViolationException(
+                "other unique constraint",
+                new SQLException("duplicate user provider", "23505"),
+                "uk_oauth_identities_user_provider")),
+        new DataIntegrityViolationException(
+            "identity insert failed",
+            new ConstraintViolationException(
+                "unknown constraint", new SQLException("constraint violation", "23505"), null)),
+        new DataIntegrityViolationException(
+            "uk_oauth_identities_provider_subject",
+            new SQLException("uk_oauth_identities_provider_subject", "23505")),
+        new DataIntegrityViolationException("uk_oauth_identities_provider_subject"));
   }
 
   private static void assertCode(ThrowingCallable invocation, AuthErrorCode code) {
