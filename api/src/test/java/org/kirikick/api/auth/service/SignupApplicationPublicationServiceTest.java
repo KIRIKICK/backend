@@ -14,6 +14,7 @@ import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.repository.SignupApplicationRepository;
 import org.kirikick.api.common.exception.DomainException;
+import org.mockito.ArgumentMatchers;
 
 class SignupApplicationPublicationServiceTest {
   @Test
@@ -30,6 +31,6 @@ class SignupApplicationPublicationServiceTest {
         .extracting(error -> ((DomainException) error).getErrorCode())
         .isEqualTo(AuthErrorCode.INVALID_SIGNUP_PROOF);
 
-    verify(applications, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    verify(applications, never()).saveAndFlush(ArgumentMatchers.any());
   }
 }
