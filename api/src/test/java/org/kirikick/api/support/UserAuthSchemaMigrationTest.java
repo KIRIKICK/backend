@@ -26,6 +26,7 @@ import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.OAuthIdentity;
+import org.kirikick.api.auth.domain.SignupApplication;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.testsupport.postgres.PostgresTestDatabase;
 
@@ -45,10 +46,10 @@ class UserAuthSchemaMigrationTest {
   }
 
   @Test
-  void migratesAndValidatesUserAndOAuthIdentityMappings() {
+  void migratesAndValidatesUserOAuthIdentityAndSignupApplicationMappings() {
     Flyway flyway = migrate();
 
-    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+    assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
     assertThat(flyway.migrate().migrationsExecuted).isZero();
     validateHibernateMappings();
 
@@ -57,6 +58,7 @@ class UserAuthSchemaMigrationTest {
       assertThat(columnExists(connection, "oauth_identities", "updated_at")).isFalse();
       assertThat(columnExists(connection, "users", "age_band")).isFalse();
       assertThat(columnExists(connection, "users", "linked_providers")).isFalse();
+      assertThat(columnExists(connection, "signup_applications", "completed_at")).isTrue();
     } catch (SQLException exception) {
       throw new IllegalStateException(exception);
     }
@@ -68,7 +70,8 @@ class UserAuthSchemaMigrationTest {
 
     try (Connection connection = connectionInSchema()) {
       assertThat(tableNames(connection))
-          .containsExactlyInAnyOrder("flyway_schema_history", "oauth_identities", "users");
+          .containsExactlyInAnyOrder(
+              "flyway_schema_history", "oauth_identities", "signup_applications", "users");
       assertThat(columns(connection, "users"))
           .containsExactlyInAnyOrderEntriesOf(
               Map.of(
@@ -93,6 +96,89 @@ class UserAuthSchemaMigrationTest {
                   "provider_subject", new ColumnDefinition("character varying", false, 255, false),
                   "created_at",
                       new ColumnDefinition("timestamp with time zone", false, null, false)));
+      assertThat(columns(connection, "signup_applications"))
+          .containsExactlyInAnyOrderEntriesOf(
+              Map.of(
+                  "id", new ColumnDefinition("uuid", false, null, false),
+                  "provider", new ColumnDefinition("character varying", false, 20, false),
+                  "provider_subject", new ColumnDefinition("character varying", false, 255, false),
+                  "expires_at",
+                      new ColumnDefinition("timestamp with time zone", false, null, false),
+                  "completed_user_id", new ColumnDefinition("bigint", true, null, false),
+                  "completed_display_name", new ColumnDefinition("text", true, null, false),
+                  "completed_at",
+                      new ColumnDefinition("timestamp with time zone", true, null, false),
+                  "created_at",
+                      new ColumnDefinition("timestamp with time zone", false, null, false),
+                  "updated_at",
+                      new ColumnDefinition("timestamp with time zone", false, null, false)));
+    }
+  }
+
+  @Test
+  void enforcesSignupApplicationContractsWithoutMakingPendingIdentityUnique() throws SQLException {
+    migrate();
+
+    try (Connection connection = connectionInSchema()) {
+      UUID firstApplicationId = UUID.randomUUID();
+      UUID secondApplicationId = UUID.randomUUID();
+      long userId = insertUser(connection, UUID.randomUUID(), "ACTIVE", null, null, null);
+
+      execute(
+          connection,
+          "insert into signup_applications "
+              + "(id, provider, provider_subject, expires_at, created_at, updated_at) values ("
+              + quote(firstApplicationId.toString())
+              + "::uuid, 'KAKAO', 'same-subject', now(), now(), now())");
+      execute(
+          connection,
+          "insert into signup_applications "
+              + "(id, provider, provider_subject, expires_at, created_at, updated_at) values ("
+              + quote(secondApplicationId.toString())
+              + "::uuid, 'KAKAO', 'same-subject', now(), now(), now())");
+      execute(
+          connection,
+          "update signup_applications set completed_user_id = "
+              + userId
+              + ", completed_display_name = 'display-name', completed_at = now() where id = "
+              + quote(firstApplicationId.toString())
+              + "::uuid");
+
+      assertSqlFails(
+          () ->
+              execute(
+                  connection,
+                  "insert into signup_applications "
+                      + "(id, provider, provider_subject, expires_at, created_at, updated_at) values ("
+                      + quote(UUID.randomUUID().toString())
+                      + "::uuid, 'UNKNOWN', 'subject', now(), now(), now())"),
+          "23514",
+          "ck_signup_applications_provider");
+      assertSqlFails(
+          () ->
+              execute(
+                  connection,
+                  "update signup_applications set completed_user_id = "
+                      + userId
+                      + " where id = "
+                      + quote(secondApplicationId.toString())
+                      + "::uuid"),
+          "23514",
+          "ck_signup_applications_completion");
+      assertSqlFails(
+          () -> execute(connection, "delete from users where id = " + userId),
+          "23503",
+          "fk_signup_applications_completed_user");
+
+      assertThat(
+              queryLong(
+                  connection,
+                  "select count(*) from pg_indexes where schemaname = "
+                      + quote(schema)
+                      + " and indexname in ('idx_signup_applications_provider_subject', "
+                      + "'idx_signup_applications_pending_expiry')"
+                      + " and indexdef not like 'CREATE UNIQUE INDEX%'"))
+          .isEqualTo(2);
     }
   }
 
@@ -298,6 +384,7 @@ class UserAuthSchemaMigrationTest {
         new MetadataSources(registry)
             .addAnnotatedClass(User.class)
             .addAnnotatedClass(OAuthIdentity.class)
+            .addAnnotatedClass(SignupApplication.class)
             .buildMetadata()
             .buildSessionFactory()) {
       // Building the SessionFactory performs Hibernate validate.
