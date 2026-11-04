@@ -6,7 +6,9 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
 import org.kirikick.api.auth.infra.JwtTokenService;
+import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
 import org.kirikick.api.auth.infra.RedisRefreshSessionStore;
+import org.kirikick.api.auth.oauth.OAuthFlowAuthorizationRequestRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -15,11 +17,21 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.converter.RsaKeyConverters;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
 public class AuthInfrastructureConfiguration {
+  @Bean
+  AuthorizationRequestRepository<OAuth2AuthorizationRequest> oauthAuthorizationRequestRepository(
+      Clock clock, RedisFlowClaimGuard claims) {
+    return new OAuthFlowAuthorizationRequestRepository(clock, claims);
+  }
+
   @Bean
   @ConditionalOnMissingBean(Clock.class)
   Clock authClock() {
@@ -54,5 +66,21 @@ public class AuthInfrastructureConfiguration {
   @Bean
   JwtDecoder jwtDecoder(JwtTokenService tokens) {
     return tokens.decoder();
+  }
+
+  @Bean
+  RedisFlowClaimGuard redisFlowClaimGuard(StringRedisTemplate redis, AuthProperties properties) {
+    return new RedisFlowClaimGuard(redis, properties.redisNamespace());
+  }
+
+  @Bean
+  CookieSerializer onboardingCookieSerializer(AuthProperties properties) {
+    DefaultCookieSerializer cookie = new DefaultCookieSerializer();
+    cookie.setCookieName(properties.secureCookies() ? "__Host-onboarding" : "dev-onboarding");
+    cookie.setUseSecureCookie(properties.secureCookies());
+    cookie.setUseHttpOnlyCookie(true);
+    cookie.setCookiePath("/");
+    cookie.setSameSite("Lax");
+    return cookie;
   }
 }
