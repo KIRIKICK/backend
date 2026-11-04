@@ -15,6 +15,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
+import java.sql.SQLTransientException;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,6 +25,7 @@ import org.hibernate.exception.JDBCConnectionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.auth.domain.IssuedSession;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.LoginSession;
@@ -42,6 +45,7 @@ import org.springframework.dao.QueryTimeoutException;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.orm.jpa.vendor.HibernateJpaDialect;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 class LoginSessionServiceTest {
   @Test
@@ -122,6 +126,75 @@ class LoginSessionServiceTest {
         () -> fixture.service().refresh("old-refresh"), AuthErrorCode.AUTH_STATE_UNAVAILABLE);
 
     verify(fixture.sessions).revoke(issued.session().id());
+  }
+
+  @Test
+  void mapsNullSqlStateTransientConnectionFailureFromRefreshAndAuthorizeToUnavailable() {
+    Fixture fixture = fixture();
+    IssuedSession issued = issued(fixture.uuid(), 17L);
+    RuntimeException failure =
+        new CannotCreateTransactionException(
+            "private", new SQLTransientConnectionException("private"));
+    when(fixture.sessions.rotate("old-refresh")).thenReturn(issued);
+    when(fixture.users.findByUuid(fixture.uuid())).thenThrow(failure);
+
+    assertCode(
+        () -> fixture.service().refresh("old-refresh"), AuthErrorCode.AUTH_STATE_UNAVAILABLE);
+    verify(fixture.sessions).revoke(issued.session().id());
+    verify(fixture.jwt, never()).issue(issued.session());
+
+    when(fixture.sessions.findActive("sid", fixture.uuid()))
+        .thenReturn(Optional.of(issued.session()));
+    Jwt token = token(fixture.uuid());
+    assertCode(() -> fixture.service().authorize(token), AuthErrorCode.AUTH_STATE_UNAVAILABLE);
+  }
+
+  @Test
+  void preservesTransactionCreationFailuresWithoutRecognizedAvailabilityEvidence() {
+    for (RuntimeException failure :
+        new RuntimeException[] {
+          new CannotCreateTransactionException("private"),
+          new CannotCreateTransactionException("private", new SQLException("private")),
+          new CannotCreateTransactionException("private", new SQLTransientException("private")),
+          new CannotCreateTransactionException("private", new IllegalStateException("private"))
+        }) {
+      Fixture fixture = fixture();
+      IssuedSession issued = issued(fixture.uuid(), 17L);
+      when(fixture.sessions.rotate("old-refresh")).thenReturn(issued);
+      when(fixture.users.findByUuid(fixture.uuid())).thenThrow(failure);
+
+      assertThatThrownBy(() -> fixture.service().refresh("old-refresh")).isSameAs(failure);
+      verify(fixture.sessions).revoke(issued.session().id());
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"54000", "57014", ""})
+  void preservesTransientConnectionFailureWithUnsupportedNonNullSqlState(String sqlState) {
+    Fixture fixture = fixture();
+    IssuedSession issued = issued(fixture.uuid(), 17L);
+    RuntimeException failure =
+        new CannotCreateTransactionException(
+            "private", new SQLTransientConnectionException("private", sqlState));
+    when(fixture.sessions.rotate("old-refresh")).thenReturn(issued);
+    when(fixture.users.findByUuid(fixture.uuid())).thenThrow(failure);
+
+    assertThatThrownBy(() -> fixture.service().refresh("old-refresh")).isSameAs(failure);
+  }
+
+  @Test
+  void preservesSemanticNegativeInsideNullSqlStateTransientConnectionFailure() {
+    Fixture fixture = fixture();
+    IssuedSession issued = issued(fixture.uuid(), 17L);
+    RuntimeException failure =
+        new CannotCreateTransactionException(
+            "private",
+            new SQLTransientConnectionException(
+                "private", new DataIntegrityViolationException("private")));
+    when(fixture.sessions.rotate("old-refresh")).thenReturn(issued);
+    when(fixture.users.findByUuid(fixture.uuid())).thenThrow(failure);
+
+    assertThatThrownBy(() -> fixture.service().refresh("old-refresh")).isSameAs(failure);
   }
 
   @Test

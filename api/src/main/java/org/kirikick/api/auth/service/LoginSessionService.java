@@ -1,6 +1,7 @@
 package org.kirikick.api.auth.service;
 
 import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Optional;
@@ -123,6 +124,7 @@ public class LoginSessionService {
   private static boolean isAvailabilityFailure(RuntimeException exception) {
     boolean queryTimeout = false;
     boolean allowedSqlState = false;
+    boolean transientConnectionWithoutSqlState = false;
     boolean unsupportedSqlState = false;
     boolean resourceFailure = false;
     Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -133,6 +135,9 @@ public class LoginSessionService {
         return false;
       }
       queryTimeout |= current instanceof QueryTimeoutException;
+      transientConnectionWithoutSqlState |=
+          current instanceof SQLTransientConnectionException connectionException
+              && connectionException.getSQLState() == null;
       resourceFailure |=
           current instanceof DataAccessResourceFailureException
               || current instanceof TransientDataAccessResourceException;
@@ -145,7 +150,7 @@ public class LoginSessionService {
         }
       }
     }
-    if (queryTimeout || allowedSqlState) {
+    if (queryTimeout || allowedSqlState || transientConnectionWithoutSqlState) {
       return true;
     }
     if (unsupportedSqlState) {
