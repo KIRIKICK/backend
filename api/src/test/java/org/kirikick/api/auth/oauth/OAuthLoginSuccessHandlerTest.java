@@ -5,14 +5,17 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -78,9 +81,9 @@ class OAuthLoginSuccessHandlerTest {
     fixture.handler.onAuthenticationSuccess(
         fixture.request, fixture.response, fixture.authentication);
 
-    verify(fixture.session, org.mockito.Mockito.never()).invalidate();
-    verify(fixture.logins, org.mockito.Mockito.never()).login(fixture.user);
-    verify(fixture.response, org.mockito.Mockito.never()).addHeader(eq("Set-Cookie"), anyString());
+    verify(fixture.session, never()).invalidate();
+    verify(fixture.logins, never()).login(fixture.user);
+    verify(fixture.response, never()).addHeader(eq("Set-Cookie"), anyString());
   }
 
   private static final class Fixture {
@@ -95,8 +98,7 @@ class OAuthLoginSuccessHandlerTest {
     private final Authentication authentication = mock(Authentication.class);
     private final OidcUser principal = mock(OidcUser.class);
     private final User user = mock(User.class);
-    private final jakarta.servlet.http.HttpSession session =
-        mock(jakarta.servlet.http.HttpSession.class);
+    private final HttpSession session = mock(HttpSession.class);
     private final Instant now = Instant.parse("2026-11-03T00:00:00Z");
     private final OAuthFlowMetadata flow =
         new OAuthFlowMetadata(
@@ -116,7 +118,7 @@ class OAuthLoginSuccessHandlerTest {
             new AuthHttpSupport(false),
             new ObjectMapper(),
             guard,
-            Clock.fixed(now, java.time.ZoneOffset.UTC),
+            Clock.fixed(now, ZoneOffset.UTC),
             "https://app.kirikick.example");
 
     private Fixture() {

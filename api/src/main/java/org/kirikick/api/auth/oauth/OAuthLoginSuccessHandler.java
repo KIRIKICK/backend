@@ -192,8 +192,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
     return OAuthFlowAuthorizationRequestRepository.invalidateExactFlow(request, flow);
   }
 
-  private void publishLogin(HttpServletResponse response, org.kirikick.api.user.domain.User user)
-      throws IOException {
+  private void publishLogin(HttpServletResponse response, User user) throws IOException {
     LoginGrant grant = logins.login(user);
     try {
       http.writeRefresh(response, grant);

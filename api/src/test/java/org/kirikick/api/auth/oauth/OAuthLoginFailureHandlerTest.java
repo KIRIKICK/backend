@@ -8,7 +8,9 @@ import static org.mockito.Mockito.when;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
@@ -77,9 +79,7 @@ class OAuthLoginFailureHandlerTest {
 
   private OAuthLoginFailureHandler handler(RedisFlowClaimGuard guard, Instant now) {
     return new OAuthLoginFailureHandler(
-        guard,
-        java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
-        "https://app.kirikick.example");
+        guard, Clock.fixed(now, ZoneOffset.UTC), "https://app.kirikick.example");
   }
 
   private void matchedRequest(
