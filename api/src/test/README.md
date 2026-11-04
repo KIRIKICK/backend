@@ -14,6 +14,29 @@ API 테스트에서는 이를 조합한 `@JpaSliceTest`만 사용하며 별도�
 class UserRepositoryTest {}
 ```
 
+## Redis Testcontainers
+
+인증 기능의 Redis 테스트는 `test-support`의 JVM-lazy `RedisTestServer`(`redis:7.4-alpine`)를 사용한다. Spring Session, OAuth claim marker, login/Refresh state 테스트는 **한 테스트 JVM 안에서 한 Redis container**를 공유한다. PostgreSQL container와는 독립적이며, `withReuse(true)` 또는 실행 간 공유를 사용하지 않는다.
+
+- Redis-only 테스트는 PostgreSQL을 시작하지 않고, PostgreSQL-only 테스트는 Redis를 시작하지 않는다.
+- 각 테스트는 application auth와 Spring Session 모두 고유 namespace를 사용한다. `FLUSHALL`, `FLUSHDB`, developer `.env`, Supabase, Upstash, 실제 카카오는 사용하지 않는다.
+- Docker를 사용할 수 없으면 이 통합 테스트는 skip·외부 연결·H2 대체 없이 실패한다.
+
+```sh
+./gradlew :api:test --tests '*Redis*Test' --rerun-tasks
+./gradlew :api:test --tests 'org.kirikick.api.auth.*' --rerun-tasks
+```
+
+명령은 `backend` 디렉터리에서 실행한다. OAuth의 실제 카카오/HTTPS 및 지정 DEV Redis smoke는 이 테스트 범위가 아닌 배포 gate다. 상세 운영 정책은 [AUTH 도메인 문서](../../../docs/domain/auth.md), HTTP 계약은 [AUTH API 구현 계약](../../../../docs/api/auth-api-spec.md)을 참고한다.
+
+## Local OIDC callback
+
+`LocalOidcProvider`는 loopback authorization·token·JWKS endpoint로 PKCE, `client_secret_post`, ID token 처리를 검증한다. `OAuthSecurityChainIntegrationTest`는 신규 subject의 `SIGNUP_REQUIRED`, 비활성 identity 차단, Session·publication 장애, provider token 비저장, callback 교체 경합을 Spring Session Redis와 PostgreSQL Testcontainers 조합으로 검증한다. 실제 카카오에는 호출하지 않는다.
+
+```sh
+./gradlew :api:test --tests org.kirikick.api.auth.OAuthSecurityChainIntegrationTest --rerun-tasks
+```
+
 ## PostgreSQL Testcontainers
 
 Docker가 실행 중이면 별도 DB URL·계정·`.env` 없이 PostgreSQL 테스트가 자동 실행됩니다.
@@ -46,13 +69,6 @@ PostgreSQL `@PostgresJpaTest`는 Flyway를 끄고 Hibernate `create-drop`을 사
 
 `UserAuthSchemaMigrationTest`는 매번 임의의 `user_auth_<uuid>` 스키마에 Flyway를 적용하고 Hibernate
 `validate`로 매핑을 검증한 뒤 해당 스키마만 삭제합니다. public 스키마나 외부 DB 전체를 정리하지 않습니다.
-
-## 향후 Redis 테스트
-
-이번 공통 지원은 PostgreSQL만 제공합니다. OAuth transaction·Refresh session처럼 실제 Redis-backed 동작의
-첫 통합 테스트와 함께 `test-support`의 독립 lazy Redis 지원을 추가합니다. PostgreSQL만 필요한 테스트는
-Redis를 시작하지 않고, Redis만 필요한 테스트는 PostgreSQL을 시작하지 않습니다. 둘 다 필요한 테스트는
-테스트 JVM 안에서 서비스별 컨테이너 하나씩을 공유합니다.
 
 ## 아키텍처 규칙
 
