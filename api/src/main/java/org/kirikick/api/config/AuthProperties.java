@@ -16,7 +16,8 @@ public record AuthProperties(
     @NotBlank String sessionRedisNamespace,
     @NotBlank String feOrigin,
     boolean secureCookies,
-    @Valid @NotNull Jwt jwt) {
+    @Valid @NotNull Jwt jwt,
+    @Valid @NotNull Kakao kakao) {
 
   @AssertTrue(message = "인증과 임시 세션의 Redis namespace는 서로 겹칠 수 없습니다.")
   public boolean isNamespacesIsolated() {
@@ -53,4 +54,38 @@ public record AuthProperties(
       @NotBlank String audience,
       @NotNull Resource privateKeyLocation,
       @NotNull Resource publicKeyLocation) {}
+
+  public record Kakao(
+      @NotBlank String clientId,
+      @NotBlank String clientSecret,
+      @NotBlank String redirectUri,
+      @NotBlank String issuerUri,
+      @NotBlank String authorizationUri,
+      @NotBlank String tokenUri,
+      @NotBlank String jwkSetUri) {
+
+    @AssertTrue(message = "카카오 endpoint는 인증정보 없는 HTTP(S) 주소여야 합니다.")
+    public boolean isEndpointsValid() {
+      try {
+        for (String endpoint :
+            new String[] {redirectUri, issuerUri, authorizationUri, tokenUri, jwkSetUri}) {
+          URI uri = URI.create(endpoint);
+          if (!isHttp(uri)
+              || uri.getHost() == null
+              || uri.getRawUserInfo() != null
+              || uri.getRawFragment() != null) {
+            return false;
+          }
+        }
+        return true;
+      } catch (IllegalArgumentException | NullPointerException exception) {
+        return false;
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "Kakao[clientId=" + clientId + ", clientSecret=<redacted>]";
+    }
+  }
 }
