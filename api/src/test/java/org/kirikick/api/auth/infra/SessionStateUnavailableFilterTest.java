@@ -2,6 +2,7 @@ package org.kirikick.api.auth.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.PersistenceException;
@@ -101,6 +102,6 @@ class SessionStateUnavailableFilterTest {
 
   @SuppressWarnings("unchecked")
   private static SessionRepository<Session> sessions() {
-    return org.mockito.Mockito.mock(SessionRepository.class);
+    return mock(SessionRepository.class);
   }
 }

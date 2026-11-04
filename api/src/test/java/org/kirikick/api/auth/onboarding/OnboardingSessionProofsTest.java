@@ -3,6 +3,7 @@ package org.kirikick.api.auth.onboarding;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -35,8 +36,7 @@ class OnboardingSessionProofsTest {
     assertThat(proof.slotId()).isEqualTo(slotId);
     assertThat(proof.expiresAt()).isEqualTo(CLOCK.instant().plusSeconds(300));
     assertThat(
-            OnboardingSessionProofs.resolve(
-                    session, Clock.offset(CLOCK, java.time.Duration.ofMinutes(5)))
+            OnboardingSessionProofs.resolve(session, Clock.offset(CLOCK, Duration.ofMinutes(5)))
                 .state())
         .isEqualTo(OnboardingProofResolution.State.EXPIRED);
   }

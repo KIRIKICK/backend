@@ -2,9 +2,12 @@ package org.kirikick.api.auth.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.session.MapSession;
@@ -26,7 +29,7 @@ class SessionRepositoryDataAccessExceptionTranslatorTest {
     when(delegate.findById("session")).thenThrow(failure);
     assertUnavailable(() -> repository.findById("session"), failure);
 
-    doThrow(failure).when(delegate).save(org.mockito.ArgumentMatchers.any(MapSession.class));
+    doThrow(failure).when(delegate).save(any(MapSession.class));
     assertUnavailable(() -> repository.save(new MapSession()), failure);
 
     doThrow(failure).when(delegate).deleteById("session");
@@ -45,11 +48,10 @@ class SessionRepositoryDataAccessExceptionTranslatorTest {
   }
 
   private static SessionRepository<MapSession> delegate() {
-    return org.mockito.Mockito.mock(SessionRepository.class);
+    return mock(SessionRepository.class);
   }
 
-  private static void assertUnavailable(
-      org.assertj.core.api.ThrowableAssert.ThrowingCallable call, Throwable cause) {
+  private static void assertUnavailable(ThrowingCallable call, Throwable cause) {
     assertThatThrownBy(call)
         .isInstanceOf(SessionStateUnavailableException.class)
         .satisfies(exception -> assertThat(exception.getCause()).isSameAs(cause));

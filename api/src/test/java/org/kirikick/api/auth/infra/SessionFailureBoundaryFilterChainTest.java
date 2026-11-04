@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -101,7 +102,7 @@ class SessionFailureBoundaryFilterChainTest {
 
   @SuppressWarnings("unchecked")
   private static SessionRepository<MapSession> delegate() {
-    return org.mockito.Mockito.mock(SessionRepository.class);
+    return mock(SessionRepository.class);
   }
 
   private static DataAccessResourceFailureException failure() {

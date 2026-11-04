@@ -2,6 +2,9 @@ package org.kirikick.api.auth.oauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -24,7 +27,7 @@ class OAuthStaleCompletionFilterTest {
       throws Exception {
     Fixture fixture = validFixture();
     SessionRepository<Session> sessions = sessions();
-    org.mockito.Mockito.when(sessions.findById(fixture.flow().sessionId())).thenReturn(null);
+    when(sessions.findById(fixture.flow().sessionId())).thenReturn(null);
     MockHttpServletResponse response = fixedFailureResponse();
 
     assertThat(
@@ -117,8 +120,7 @@ class OAuthStaleCompletionFilterTest {
   void rethrowsMarkedStaleCompletionWhenTheOldSessionStillExists() {
     Fixture fixture = validFixture();
     SessionRepository<Session> sessions = sessions();
-    org.mockito.Mockito.when(sessions.findById(fixture.flow().sessionId()))
-        .thenReturn(new MapSession());
+    when(sessions.findById(fixture.flow().sessionId())).thenReturn(new MapSession());
     MockHttpServletResponse response = fixedFailureResponse();
     IllegalStateException failure = staleFailure();
     assertThat(
@@ -159,7 +161,7 @@ class OAuthStaleCompletionFilterTest {
                       throw failure;
                     }))
         .isSameAs(failure);
-    org.mockito.Mockito.verifyNoInteractions(sessions);
+    verifyNoInteractions(sessions);
   }
 
   @Test
@@ -167,7 +169,7 @@ class OAuthStaleCompletionFilterTest {
     Fixture fixture = validFixture();
     SessionRepository<Session> sessions = sessions();
     IllegalStateException failure = staleFailure();
-    org.mockito.Mockito.when(sessions.findById(fixture.flow().sessionId()))
+    when(sessions.findById(fixture.flow().sessionId()))
         .thenThrow(new SessionStateUnavailableException(new RuntimeException("redis down")));
     MockHttpServletResponse response = fixedFailureResponse();
     assertThat(
@@ -208,7 +210,7 @@ class OAuthStaleCompletionFilterTest {
                       throw failure;
                     }))
         .isSameAs(failure);
-    org.mockito.Mockito.verifyNoInteractions(sessions);
+    verifyNoInteractions(sessions);
   }
 
   private static Fixture validFixture() {
@@ -248,7 +250,7 @@ class OAuthStaleCompletionFilterTest {
 
   @SuppressWarnings("unchecked")
   private static SessionRepository<Session> sessions() {
-    return org.mockito.Mockito.mock(SessionRepository.class);
+    return mock(SessionRepository.class);
   }
 
   private record Fixture(MockHttpServletRequest request, OAuthFlowMetadata flow, UUID claimId) {}

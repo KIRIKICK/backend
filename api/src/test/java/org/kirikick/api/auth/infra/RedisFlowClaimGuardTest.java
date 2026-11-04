@@ -1,8 +1,10 @@
 package org.kirikick.api.auth.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -155,7 +157,7 @@ class RedisFlowClaimGuardTest {
                   null,
                   NOW))
           .isEqualTo(RedisFlowClaimGuard.FinishOAuthResult.END_CLEANUP_PERMIT);
-      org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+      assertThatThrownBy(() ->
               guard.finishOAuth(
                   slot,
                   flow,
@@ -220,26 +222,20 @@ class RedisFlowClaimGuardTest {
       guard.claimSignup(slot, proof, deadline, claim, NOW);
       assertThat(guard.finishSignup(slot, proof, deadline, claim, NOW.plusSeconds(301)))
           .isEqualTo(RedisFlowClaimGuard.FinishSignupResult.EXPIRED_CLEANUP_PERMIT);
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.beginOAuth(null, UUID.randomUUID(), deadline, NOW))
+      assertThatThrownBy(() -> guard.beginOAuth(null, UUID.randomUUID(), deadline, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.claimSignup(slot, proof, deadline, null, NOW))
+      assertThatThrownBy(() -> guard.claimSignup(slot, proof, deadline, null, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.claimOAuth(slot, proof, deadline, null, NOW))
+      assertThatThrownBy(() -> guard.claimOAuth(slot, proof, deadline, null, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
-      org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+      assertThatThrownBy(() ->
               guard.finishOAuth(slot, proof, deadline, UUID.randomUUID(), null, null, null, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.inspectProof(slot, proof, deadline, null))
+      assertThatThrownBy(() -> guard.inspectProof(slot, proof, deadline, null))
           .isInstanceOf(SessionStateUnavailableException.class);
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.finishProof(slot, proof, deadline, null))
+      assertThatThrownBy(() -> guard.finishProof(slot, proof, deadline, null))
           .isInstanceOf(SessionStateUnavailableException.class);
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.finishSignup(slot, proof, deadline, null, NOW))
+      assertThatThrownBy(() -> guard.finishSignup(slot, proof, deadline, null, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
     }
   }
@@ -260,7 +256,7 @@ class RedisFlowClaimGuardTest {
       var b = pool.submit(() -> claimAfterBarrier(second, slot, proof, deadline, ready, start));
       assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
       start.countDown();
-      var results = java.util.List.of(a.get(5, TimeUnit.SECONDS), b.get(5, TimeUnit.SECONDS));
+      var results = List.of(a.get(5, TimeUnit.SECONDS), b.get(5, TimeUnit.SECONDS));
       assertThat(results)
           .containsExactlyInAnyOrder(
               RedisFlowClaimGuard.ClaimSignupResult.CLAIMED,
@@ -282,13 +278,11 @@ class RedisFlowClaimGuardTest {
           .isBetween(60_000L, 12 * 60_000L);
       redis.template().delete(key);
       redis.template().opsForValue().set(key, "not-a-hash");
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.beginOAuth(slot, flow, deadline, NOW))
+      assertThatThrownBy(() -> guard.beginOAuth(slot, flow, deadline, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
       redis.template().delete(key);
       redis.template().opsForHash().put(key, "kind", "PROOF");
-      org.assertj.core.api.Assertions.assertThatThrownBy(
-              () -> guard.inspectProof(slot, UUID.randomUUID(), deadline, NOW))
+      assertThatThrownBy(() -> guard.inspectProof(slot, UUID.randomUUID(), deadline, NOW))
           .isInstanceOf(SessionStateUnavailableException.class);
     }
   }
