@@ -52,8 +52,8 @@ class SignupApplicationTest {
     assertThat(application.getCompletedUserId()).isEqualTo(42L);
     assertThat(application.getCompletedDisplayName()).isEqualTo("Name ");
     assertThat(application.getCompletedAt()).isEqualTo(completedAt);
-    assertThat(application.matchesCompletedDisplayName("Name ")).isTrue();
-    assertThat(application.matchesCompletedDisplayName("Name")).isFalse();
+    assertThat(application.isCompletedWithDisplayName("Name ")).isTrue();
+    assertThat(application.isCompletedWithDisplayName("Name")).isFalse();
     assertCode(
         () -> application.complete(43L, "Other", completedAt.plusSeconds(1)),
         AuthErrorCode.SIGNUP_APPLICATION_ALREADY_COMPLETED);
