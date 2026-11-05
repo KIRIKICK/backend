@@ -5,7 +5,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Clock;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.infra.JwtTokenService;
 import org.kirikick.api.auth.infra.OriginValidationFilter;
@@ -19,6 +18,7 @@ import org.kirikick.api.auth.oauth.OAuthLoginSuccessHandler;
 import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.service.SignupApplicationPublicationService;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.kirikick.api.user.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -243,9 +243,6 @@ public class AuthSecurityConfiguration {
       AuthErrorCode code)
       throws IOException {
     AuthHttpSupport.writeError(
-        response,
-        objectMapper,
-        status.value(),
-        new AuthErrorResponse(code.name(), code.getMessage()));
+        response, objectMapper, status.value(), new ErrorResponse(code.name(), code.getMessage()));
   }
 }

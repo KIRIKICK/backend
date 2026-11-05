@@ -72,7 +72,7 @@ class OpenApiDocumentationIntegrationTest {
               operation
                   .at("/responses/" + status + "/content/application~1json/schema/$ref")
                   .asText())
-          .isEqualTo("#/components/schemas/AuthErrorResponse");
+          .isEqualTo("#/components/schemas/ErrorResponse");
     }
     assertThat(
             document.at("/components/schemas/TokenResponse/properties/expiresIn/example").asInt())
@@ -147,7 +147,7 @@ class OpenApiDocumentationIntegrationTest {
     for (String code : new String[] {"401", "403", "503"}) {
       assertThat(
               context.at("/responses/" + code + "/content/application~1json/schema/$ref").asText())
-          .isEqualTo("#/components/schemas/AuthErrorResponse");
+          .isEqualTo("#/components/schemas/ErrorResponse");
       assertThat(context.at("/responses/" + code + "/headers/Cache-Control/description").asText())
           .contains("no-store");
     }
@@ -170,7 +170,7 @@ class OpenApiDocumentationIntegrationTest {
     for (String code : new String[] {"400", "401", "403", "409", "503"}) {
       assertThat(
               signup.at("/responses/" + code + "/content/application~1json/schema/$ref").asText())
-          .isEqualTo("#/components/schemas/AuthErrorResponse");
+          .isEqualTo("#/components/schemas/ErrorResponse");
       assertThat(signup.at("/responses/" + code + "/headers/Cache-Control/description").asText())
           .contains("no-store");
       for (JsonNode example :

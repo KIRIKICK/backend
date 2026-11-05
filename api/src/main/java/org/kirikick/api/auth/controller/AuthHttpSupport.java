@@ -5,8 +5,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
@@ -21,7 +21,7 @@ public final class AuthHttpSupport {
   }
 
   public static void writeError(
-      HttpServletResponse response, ObjectMapper objectMapper, int status, AuthErrorResponse error)
+      HttpServletResponse response, ObjectMapper objectMapper, int status, ErrorResponse error)
       throws IOException {
     response.setStatus(status);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());

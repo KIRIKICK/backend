@@ -12,7 +12,6 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
@@ -24,6 +23,7 @@ import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.auth.service.AuthStateAvailability;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.service.SignupApplicationPublicationService;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.domain.UserStatus;
 import org.kirikick.api.user.repository.UserRepository;
@@ -101,7 +101,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
           response,
           objectMapper,
           HttpStatus.SERVICE_UNAVAILABLE.value(),
-          new AuthErrorResponse(
+          new ErrorResponse(
               AuthErrorCode.AUTH_STATE_UNAVAILABLE.name(),
               AuthErrorCode.AUTH_STATE_UNAVAILABLE.getMessage()));
       return;
@@ -170,7 +170,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
             response,
             objectMapper,
             HttpStatus.SERVICE_UNAVAILABLE.value(),
-            new AuthErrorResponse(
+            new ErrorResponse(
                 AuthErrorCode.AUTH_STATE_UNAVAILABLE.name(),
                 AuthErrorCode.AUTH_STATE_UNAVAILABLE.getMessage()));
         return;

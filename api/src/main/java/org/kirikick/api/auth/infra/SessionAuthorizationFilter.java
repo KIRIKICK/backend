@@ -7,9 +7,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.service.LoginSessionService;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.exception.ErrorCode;
 import org.springframework.security.core.Authentication;
@@ -52,6 +52,6 @@ public final class SessionAuthorizationFilter extends OncePerRequestFilter {
                 ? HttpServletResponse.SC_FORBIDDEN
                 : HttpServletResponse.SC_UNAUTHORIZED;
     AuthHttpSupport.writeError(
-        response, objectMapper, status, new AuthErrorResponse(code.toString(), code.getMessage()));
+        response, objectMapper, status, new ErrorResponse(code.toString(), code.getMessage()));
   }
 }

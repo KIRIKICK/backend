@@ -13,13 +13,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.controller.dto.CsrfResponse;
 import org.kirikick.api.auth.controller.dto.TokenResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.infra.JwtTokenService;
 import org.kirikick.api.auth.service.LoginSessionService;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.kirikick.api.common.exception.DomainException;
 import org.springframework.http.MediaType;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -65,7 +65,7 @@ public class AuthSessionController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples =
                     @ExampleObject(
                         value =
@@ -117,7 +117,7 @@ public class AuthSessionController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "유효하지 않은 Refresh Token",
@@ -134,7 +134,7 @@ public class AuthSessionController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "Origin 또는 CSRF 검증 실패",
@@ -149,7 +149,7 @@ public class AuthSessionController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples =
                     @ExampleObject(
                         value =
