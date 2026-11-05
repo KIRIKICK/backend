@@ -9,10 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.support.AuthTestSettings;
+import org.kirikick.api.common.exception.ErrorCode;
+import org.kirikick.api.user.domain.exception.UserErrorCode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -89,6 +92,105 @@ class OpenApiDocumentationIntegrationTest {
         .andExpect(redirectedUrl("/swagger-ui/index.html"));
     mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
     mvc.perform(get("/v3/api-docs/swagger-config")).andExpect(status().isOk());
+  }
+
+  @Test
+  void documentsMyProfileResponseAndBearerAuthentication() throws Exception {
+    JsonNode operation = document().at("/paths/~1users~1me~1profile/get");
+
+    assertThat(operation.path("summary").asText()).isEqualTo("내 프로필 조회");
+    JsonNode errorSchema = document().at("/components/schemas/ErrorResponse");
+    assertThat(errorSchema.at("/properties/code/description").asText()).isEqualTo("오류 코드");
+    assertThat(errorSchema.at("/properties/message/description").asText()).isEqualTo("오류 사유");
+    assertThat(errorSchema.path("required"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("code", "message");
+    assertThat(operation.path("parameters")).isEmpty();
+    assertThat(operation.path("security").isArray()).isTrue();
+    assertThat(operation.path("security").get(0).has("bearerAuth")).isTrue();
+    assertThat(document().at("/components/securitySchemes/bearerAuth/type").asText())
+        .isEqualTo("http");
+    assertThat(document().at("/components/securitySchemes/bearerAuth/scheme").asText())
+        .isEqualTo("bearer");
+    assertThat(document().at("/components/securitySchemes/bearerAuth/bearerFormat").asText())
+        .isEqualTo("JWT");
+    assertThat(operation.at("/responses/200/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/UserProfileResponse");
+    JsonNode profile = document().at("/components/schemas/UserProfileResponse");
+    assertThat(profile.path("properties").size()).isEqualTo(4);
+    for (String field :
+        new String[] {"uuid", "displayName", "profileImageUrl", "linkedProviders"}) {
+      assertThat(profile.path("properties").has(field)).isTrue();
+    }
+    assertThat(profile.path("required"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("uuid", "displayName", "profileImageUrl", "linkedProviders");
+    assertThat(profile.at("/properties/profileImageUrl/type"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("string", "null");
+    assertThat(profile.at("/properties/uuid/format").asText()).isEqualTo("uuid");
+    assertThat(profile.at("/properties/linkedProviders/items/enum"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("kakao", "apple");
+    assertThat(operation.at("/security/0/bearerAuth/0").asText()).isEmpty();
+    for (String status : new String[] {"200", "401", "403", "404", "503"}) {
+      assertThat(
+              operation.at("/responses/" + status + "/headers/Cache-Control/description").asText())
+          .contains("no-store");
+    }
+    assertThat(operation.at("/responses/401/description").asText())
+        .contains("AUTHENTICATION_REQUIRED");
+    assertThat(operation.at("/responses/403/description").asText())
+        .contains("ACCOUNT_INACTIVE", "CORS");
+    assertThat(operation.at("/responses/404/description").asText()).contains("ACCOUNT_NOT_FOUND");
+    assertThat(operation.at("/responses/503/description").asText())
+        .contains("AUTH_STATE_UNAVAILABLE", "PROFILE_UNAVAILABLE");
+    assertThat(operation.at("/responses/401/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/ErrorResponse");
+    assertThat(operation.at("/responses/403/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/ErrorResponse");
+    assertThat(operation.at("/responses/404/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/ErrorResponse");
+    assertThat(operation.at("/responses/503/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/ErrorResponse");
+  }
+
+  @Test
+  void documentsProfileExamplesWithTheCurrentDomainErrorContracts() throws Exception {
+    JsonNode operation = document().at("/paths/~1users~1me~1profile/get");
+    assertThat(operation.path("description").asText()).contains("JWT", "쿠키", "CSRF", "조회");
+
+    JsonNode profile =
+        operation.at("/responses/200/content/application~1json/examples/PROFILE/value");
+    assertThat(profile.size()).isEqualTo(4);
+    assertThat(profile.has("uuid")).isTrue();
+    assertThat(profile.path("displayName").asText()).isNotBlank();
+    assertThat(profile.has("profileImageUrl")).isTrue();
+    assertThat(profile.get("profileImageUrl").isNull()).isTrue();
+    assertThat(profile.path("linkedProviders"))
+        .extracting(JsonNode::asText)
+        .containsExactly("kakao");
+
+    Map<ErrorCode, String> responses =
+        Map.of(
+            AuthErrorCode.AUTHENTICATION_REQUIRED, "401",
+            AuthErrorCode.ACCOUNT_INACTIVE, "403",
+            UserErrorCode.ACCOUNT_NOT_FOUND, "404",
+            AuthErrorCode.AUTH_STATE_UNAVAILABLE, "503",
+            UserErrorCode.PROFILE_UNAVAILABLE, "503");
+    responses.forEach((error, status) -> {
+      JsonNode example =
+          operation.at(
+              "/responses/" + status + "/content/application~1json/examples/" + error + "/value");
+      assertThat(example.size()).isEqualTo(2);
+      assertThat(example.path("code").asText()).isEqualTo(error.toString());
+      assertThat(example.path("message").asText()).isEqualTo(error.getMessage());
+    });
+
+    assertThat(operation.at("/responses/403/content/*~1*/schema/type").asText())
+        .isEqualTo("string");
+    assertThat(operation.at("/responses/403/content/*~1*/schema/example").asText())
+        .isEqualTo("Invalid CORS request");
   }
 
   @Test
