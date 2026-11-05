@@ -58,7 +58,7 @@ Refresh API의 Origin·CSRF·쿠키 검증은 Swagger에서도 동일하게 적�
 
 ## 실행 프로필과 DB
 
-OAuth·Spring Session·SignupApplication 발행 설정은 [.env.example](.env.example)을 참고합니다. 실제 secret은 커밋하지 않습니다. 실제 카카오/HTTPS 등 외부 rollout gate는 AUTH 문서에 구분합니다.
+OAuth·Spring Session·SignupApplication 연결 설정은 [.env.example](.env.example)을 참고합니다. 실제 secret은 커밋하지 않습니다. 가입신청 보존·정리와 실제 카카오/HTTPS 등 미검증 rollout 게이트는 AUTH 문서에 구분합니다.
 
 | 프로필 | 연결 대상 | 설정 |
 | --- | --- | --- |

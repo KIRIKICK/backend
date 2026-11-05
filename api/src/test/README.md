@@ -16,11 +16,12 @@ class UserRepositoryTest {}
 
 ## Redis Testcontainers
 
-인증 기능의 Redis 테스트는 `test-support`의 JVM-lazy `RedisTestServer`(`redis:7.4-alpine`)를 사용한다. Spring Session, OAuth claim marker, login/Refresh state 테스트는 **한 테스트 JVM 안에서 한 Redis container**를 공유한다. PostgreSQL container와는 독립적이며, `withReuse(true)` 또는 실행 간 공유를 사용하지 않는다.
+인증 기능의 Redis 테스트는 `test-support`의 JVM-lazy `RedisTestServer`(`redis:7.4-alpine`)를 사용한다. Spring Session, OAuth/signup claim marker, login/Refresh state 테스트는 **한 테스트 JVM 안에서 한 Redis container**를 공유한다. PostgreSQL container와는 독립적이며, `withReuse(true)` 또는 실행 간 공유를 사용하지 않는다.
 
 - Redis-only 테스트는 PostgreSQL을 시작하지 않고, PostgreSQL-only 테스트는 Redis를 시작하지 않는다.
 - 각 테스트는 application auth와 Spring Session 모두 고유 namespace를 사용한다. `FLUSHALL`, `FLUSHDB`, developer `.env`, Supabase, Upstash, 실제 카카오는 사용하지 않는다.
 - Docker를 사용할 수 없으면 이 통합 테스트는 skip·외부 연결·H2 대체 없이 실패한다.
+- helper-only Redis container 테스트를 만들지 않는다. 실제 Session/auth repository 테스트가 fixture를 검증한다.
 
 ```sh
 ./gradlew :api:test --tests '*Redis*Test' --rerun-tasks
