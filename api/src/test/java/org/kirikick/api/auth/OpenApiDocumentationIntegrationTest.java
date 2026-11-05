@@ -2,6 +2,8 @@ package org.kirikick.api.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -9,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.support.AuthTestSettings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -86,6 +89,119 @@ class OpenApiDocumentationIntegrationTest {
         .andExpect(redirectedUrl("/swagger-ui/index.html"));
     mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
     mvc.perform(get("/v3/api-docs/swagger-config")).andExpect(status().isOk());
+  }
+
+  @Test
+  void documentsRequiredSignupValuesAndStrictRequestShape() throws Exception {
+    JsonNode document = document();
+    JsonNode request = document.at("/components/schemas/SignupRequest");
+    JsonNode consents = document.at("/components/schemas/SignupConsents");
+
+    assertThat(request.path("required"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("signupApplicationId", "displayName", "consents");
+    assertThat(consents.path("required"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("service", "privacy", "ageConfirmed");
+    assertThat(request.path("additionalProperties").asBoolean(true)).isFalse();
+    assertThat(consents.path("additionalProperties").asBoolean(true)).isFalse();
+    assertThat(request.at("/properties/signupApplicationId/format").asText()).isEqualTo("uuid");
+    assertThat(request.at("/properties/displayName/maxLength").asInt()).isEqualTo(10);
+    assertThat(request.at("/properties/displayName/description").asText()).contains("원문", "연속 공백");
+    assertThat(request.at("/properties/consents/$ref").asText())
+        .isEqualTo("#/components/schemas/SignupConsents");
+    for (String field : new String[] {"service", "privacy", "ageConfirmed"}) {
+      assertThat(consents.at("/properties/" + field + "/type").asText()).isEqualTo("boolean");
+      assertThat(consents.at("/properties/" + field + "/description").asText()).contains("true");
+    }
+  }
+
+  @Test
+  void corsRejectionCanReturnFrameworkTextInsteadOfSignupJson() throws Exception {
+    mvc.perform(get("/auth/signup/context").header("Origin", "https://untrusted.invalid"))
+        .andExpect(status().isForbidden())
+        .andExpect(content().string("Invalid CORS request"));
+    mvc.perform(post("/auth/signup").header("Origin", "https://untrusted.invalid"))
+        .andExpect(status().isForbidden())
+        .andExpect(content().string("Invalid CORS request"));
+  }
+
+  @Test
+  void documentsSignupSessionCsrfAndJsonResponseContracts() throws Exception {
+    JsonNode document = document();
+    JsonNode context = document.at("/paths/~1auth~1signup~1context/get");
+    JsonNode signup = document.at("/paths/~1auth~1signup/post");
+    JsonNode contextSchema = document.at("/components/schemas/SignupContextResponse");
+
+    assertThat(contextSchema.path("required"))
+        .extracting(JsonNode::asText)
+        .contains("signupApplicationId");
+    assertThat(contextSchema.at("/properties/suggestedDisplayName/type"))
+        .extracting(JsonNode::asText)
+        .containsExactlyInAnyOrder("string", "null");
+
+    assertThat(context.path("description").asText())
+        .contains("__Host-onboarding", "dev-onboarding", "credentials: include");
+    assertThat(context.at("/responses/200/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/SignupContextResponse");
+    for (String code : new String[] {"401", "403", "503"}) {
+      assertThat(
+              context.at("/responses/" + code + "/content/application~1json/schema/$ref").asText())
+          .isEqualTo("#/components/schemas/AuthErrorResponse");
+      assertThat(context.at("/responses/" + code + "/headers/Cache-Control/description").asText())
+          .contains("no-store");
+    }
+    assertThat(signup.path("description").asText())
+        .contains("AUTH_FE_ORIGIN", "X-XSRF-TOKEN", "토큰을 재발급하지 않습니다");
+    assertThat(signup.path("parameters").findValuesAsText("name")).containsExactly("X-XSRF-TOKEN");
+    assertThat(signup.at("/parameters/0/in").asText()).isEqualTo("header");
+    assertThat(signup.at("/parameters/0/required").asBoolean()).isTrue();
+    assertThat(signup.at("/requestBody/required").asBoolean()).isTrue();
+    assertThat(signup.at("/requestBody/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/SignupRequest");
+    assertThat(signup.at("/responses/201/content/application~1json/schema/$ref").asText())
+        .isEqualTo("#/components/schemas/TokenResponse");
+    assertThat(signup.at("/responses/201/headers/Set-Cookie/description").asText())
+        .contains("HttpOnly", "SameSite=Strict");
+    assertThat(signup.at("/responses/201/headers/Cache-Control/description").asText())
+        .isEqualTo("no-store");
+    assertThat(signup.at("/responses/201/headers/Pragma/description").asText())
+        .isEqualTo("no-cache");
+    for (String code : new String[] {"400", "401", "403", "409", "503"}) {
+      assertThat(
+              signup.at("/responses/" + code + "/content/application~1json/schema/$ref").asText())
+          .isEqualTo("#/components/schemas/AuthErrorResponse");
+      assertThat(signup.at("/responses/" + code + "/headers/Cache-Control/description").asText())
+          .contains("no-store");
+      for (JsonNode example :
+          signup.at("/responses/" + code + "/content/application~1json/examples")) {
+        JsonNode value = example.path("value");
+        AuthErrorCode error = AuthErrorCode.valueOf(value.path("code").asText());
+        assertThat(value.path("message").asText()).isEqualTo(error.getMessage());
+      }
+    }
+    assertThat(signup.at("/responses/400/description").asText())
+        .contains("INVALID_SIGNUP_REQUEST", "INVALID_DISPLAY_NAME");
+    assertThat(signup.at("/responses/403/description").asText())
+        .contains("AUTHENTICATION_REQUIRED", "AGE_CONFIRMATION_REQUIRED", "ACCOUNT_INACTIVE");
+    for (JsonNode operation : new JsonNode[] {context, signup}) {
+      assertThat(operation.at("/responses/403/description").asText())
+          .contains("CORS", "Invalid CORS request");
+      assertThat(operation.at("/responses/403/content/*~1*/schema/type").asText())
+          .isEqualTo("string");
+      assertThat(operation.at("/responses/403/headers/Cache-Control/description").asText())
+          .contains("CORS 사전 거절에는 없을 수 있습니다");
+    }
+    assertThat(signup.at("/responses/409/description").asText())
+        .contains("SIGNUP_APPLICATION_ALREADY_COMPLETED", "OAUTH_IDENTITY_ALREADY_EXISTS");
+    assertThat(
+            signup.at("/responses/403/content/application~1json/examples").findValuesAsText("code"))
+        .containsExactlyInAnyOrder(
+            "AUTHENTICATION_REQUIRED", "AGE_CONFIRMATION_REQUIRED", "ACCOUNT_INACTIVE");
+    assertThat(
+            signup.at("/responses/409/content/application~1json/examples").findValuesAsText("code"))
+        .containsExactlyInAnyOrder(
+            "SIGNUP_APPLICATION_ALREADY_COMPLETED", "OAUTH_IDENTITY_ALREADY_EXISTS");
   }
 
   private JsonNode document() throws Exception {
