@@ -18,7 +18,7 @@ class UserRepositoryTest {
 
   @Test
   void savesAndFindsTheFullUserModelByPublicUuid() {
-    User user = User.create("display-name", null);
+    User user = User.create("display", null);
 
     User saved = userRepository.save(user);
     entityManager.flush();
@@ -28,7 +28,7 @@ class UserRepositoryTest {
 
     assertThat(reloaded.getId()).isNotNull();
     assertThat(reloaded.getUuid()).isEqualTo(saved.getUuid());
-    assertThat(reloaded.getDisplayName()).isEqualTo("display-name");
+    assertThat(reloaded.getDisplayName()).isEqualTo("display");
     assertThat(reloaded.getProfileImageUrl()).isNull();
     assertThat(reloaded.getBirthYear()).isNull();
     assertThat(reloaded.getStatus()).isEqualTo(UserStatus.ACTIVE);
@@ -44,8 +44,7 @@ class UserRepositoryTest {
 
   @Test
   void preservesANonNullProfileImageUrlAfterFlushAndReload() {
-    User saved =
-        userRepository.save(User.create("display-name", "https://example.test/profile.png"));
+    User saved = userRepository.save(User.create("display", "https://example.test/profile.png"));
     entityManager.flush();
     entityManager.clear();
 

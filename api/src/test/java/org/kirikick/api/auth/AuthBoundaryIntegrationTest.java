@@ -189,7 +189,7 @@ class AuthBoundaryIntegrationTest {
   void refreshRejectsEveryInactiveMemberStatusWithoutIssuingAnotherCookie() throws Exception {
     for (UserStatus inactive :
         List.of(UserStatus.WITHDRAWN, UserStatus.SUSPENDED, UserStatus.BANNED)) {
-      User member = users.saveAndFlush(User.create("비활성" + inactive, null));
+      User member = users.saveAndFlush(User.create("비활성회원", null));
       LoginGrant grant = logins.login(member);
       ReflectionTestUtils.setField(member, "status", inactive);
       users.saveAndFlush(member);
@@ -209,7 +209,7 @@ class AuthBoundaryIntegrationTest {
 
   @Test
   void memberLookupOutageRejectsRefreshAndAnOtherwiseValidAccessToken() throws Exception {
-    User refreshMember = users.saveAndFlush(User.create("DB장애Refresh", null));
+    User refreshMember = users.saveAndFlush(User.create("갱신장애회원", null));
     LoginGrant refreshGrant = logins.login(refreshMember);
     User protectedMember = users.saveAndFlush(User.create("DB장애보호", null));
     LoginGrant protectedGrant = logins.login(protectedMember);

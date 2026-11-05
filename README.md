@@ -54,11 +54,13 @@ IDE에서 애플리케이션을 직접 실행할 때도 작업 디렉터리를 `
 - Swagger UI: `/swagger-ui.html`
 - OpenAPI JSON: `/v3/api-docs`
 
+인증 API의 요청 스키마·응답 코드·오류 예제·쿠키/CSRF 전제조건은 컨트롤러 선언에서 생성한 OpenAPI를 기준으로 확인합니다.
+
 Refresh API의 Origin·CSRF·쿠키 검증은 Swagger에서도 동일하게 적용됩니다. 브라우저가 Origin과 HttpOnly 쿠키를 관리하므로, Swagger 입력란만으로 인증 흐름을 재현하거나 검증을 우회할 수 없습니다.
 
 ## 실행 프로필과 DB
 
-OAuth·Spring Session·SignupApplication 발행 설정은 [.env.example](.env.example)을 참고합니다. 실제 secret은 커밋하지 않습니다. 실제 카카오/HTTPS 등 외부 rollout gate는 AUTH 문서에 구분합니다.
+OAuth·Spring Session·SignupApplication 연결 설정은 [.env.example](.env.example)을 참고합니다. 실제 secret은 커밋하지 않습니다. 가입신청 보존·정리와 실제 카카오/HTTPS 등 미검증 rollout 게이트는 AUTH 문서에 구분합니다.
 
 | 프로필 | 연결 대상 | 설정 |
 | --- | --- | --- |
