@@ -246,6 +246,24 @@ class ProfileConfigurationTest {
         });
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"dev", "prod"})
+  void separatesSessionAndLoginNamespacesOnTheSameRedis(String profile) {
+    profileConfiguration(
+            profile, "spring.config.import=", "AUTH_REDIS_NAMESPACE=kirikick:" + profile)
+        .run(context -> {
+          Environment environment = context.getEnvironment();
+          assertThat(environment.getProperty("auth.redis-namespace"))
+              .isEqualTo("kirikick:" + profile + ":auth");
+          assertThat(environment.getProperty("spring.session.redis.namespace"))
+              .isEqualTo("kirikick:" + profile + ":spring:session");
+          assertThat(environment.getProperty("spring.session.redis.repository-type"))
+              .isEqualTo("default");
+          assertThat(environment.getProperty("spring.session.redis.configure-action"))
+              .isEqualTo("none");
+        });
+  }
+
   private static ApplicationContextRunner configuration(String... properties) {
     return new ApplicationContextRunner()
         .withInitializer(new ConfigDataApplicationContextInitializer())
