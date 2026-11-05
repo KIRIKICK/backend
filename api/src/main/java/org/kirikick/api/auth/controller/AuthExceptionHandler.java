@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class AuthExceptionHandler {
+
   @ExceptionHandler(DomainException.class)
   public ResponseEntity<AuthErrorResponse> domainException(DomainException exception) {
     HttpStatus status = status(exception.getErrorCode());
@@ -27,11 +28,16 @@ public class AuthExceptionHandler {
     return switch (code) {
       case AUTH_STATE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
       case ACCOUNT_INACTIVE, AGE_CONFIRMATION_REQUIRED -> HttpStatus.FORBIDDEN;
-      case OAUTH_IDENTITY_ALREADY_EXISTS -> HttpStatus.CONFLICT;
+      case OAUTH_IDENTITY_ALREADY_EXISTS, SIGNUP_APPLICATION_ALREADY_COMPLETED ->
+          HttpStatus.CONFLICT;
       case INVALID_REFRESH_TOKEN,
           REFRESH_TOKEN_REUSED,
           AUTHENTICATION_REQUIRED,
           INVALID_SIGNUP_PROOF,
+          SIGNUP_APPLICATION_NOT_FOUND,
+          SIGNUP_APPLICATION_IDENTITY_MISMATCH,
+          SIGNUP_APPLICATION_EXPIRED,
+          SIGNUP_APPLICATION_COMPLETED_INPUT_MISMATCH,
           SIGNUP_ALREADY_CLAIMED,
           INVALID_OAUTH_STATE ->
           HttpStatus.UNAUTHORIZED;
