@@ -20,7 +20,7 @@ class OAuthIdentityRepositoryTest {
 
   @Test
   void savesAndFindsAnOpaqueProviderSubject() {
-    User user = userRepository.save(User.create("display-name", null));
+    User user = userRepository.save(User.create("display", null));
     OAuthIdentity identity = OAuthIdentity.create(user.getId(), OAuthProvider.KAKAO, "AbC");
 
     oauthIdentityRepository.save(identity);

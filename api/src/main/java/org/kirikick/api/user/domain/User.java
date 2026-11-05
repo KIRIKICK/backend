@@ -26,6 +26,8 @@ import org.kirikick.api.user.domain.exception.UserErrorCode;
     uniqueConstraints = @UniqueConstraint(name = "uk_users_uuid", columnNames = "uuid"))
 public class User extends BaseTimeEntity {
 
+  private static final int DISPLAY_NAME_MAX_CODE_POINTS = 10;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
@@ -50,9 +52,7 @@ public class User extends BaseTimeEntity {
   private Instant withdrawnAt;
 
   private User(String displayName, String profileImageUrl) {
-    if (displayName == null || displayName.isBlank()) {
-      throw new DomainException(UserErrorCode.INVALID_DISPLAY_NAME);
-    }
+    validateDisplayName(displayName);
 
     this.uuid = UUID.randomUUID();
     this.displayName = displayName;
@@ -62,5 +62,16 @@ public class User extends BaseTimeEntity {
 
   public static User create(String displayName, String profileImageUrl) {
     return new User(displayName, profileImageUrl);
+  }
+
+  private static void validateDisplayName(String displayName) {
+    if (displayName == null
+        || displayName.isBlank()
+        || displayName.codePointCount(0, displayName.length()) > DISPLAY_NAME_MAX_CODE_POINTS
+        || !displayName.matches("[가-힣ㄱ-ㅎㅏ-ㅣA-Za-z0-9 _-]+")
+        || !displayName.matches(".*[가-힣ㄱ-ㅎㅏ-ㅣA-Za-z0-9].*")
+        || displayName.contains("  ")) {
+      throw new DomainException(UserErrorCode.INVALID_DISPLAY_NAME);
+    }
   }
 }
