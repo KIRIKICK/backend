@@ -101,4 +101,4 @@ signup claim은 DB 작업을 수락하는 원자적 경계다. live 5분 lease �
 
 OAuth callback의 exact Session proof 저장 호출 성공 뒤 같은 ID·identity·발급 시각의 가입신청을 DB commit한다. 가입 context/POST는 ID–현재 proof–DB 신청을 대조하며 ID 자체는 권한이 아니다. 완료 DB transaction 반환 후에만 ACTIVE 회원을 조회해 로그인한다. 기존 완료 결과는 409이며 토큰 재발급·POST 자동 retry 없이 새 OAuth로 재진입한다. 이름은 별도 정규화 없이 원문으로 저장·비교한다.
 
-Redis claim/lease·BUSY·최신 flow·stale 처리는 이번 연결에서 유지한다. Session ACK는 최종 Session/쿠키 상태와 같지 않으며 S08 늦은 쿠키 삭제 경합은 별도 미해결이다. pending/completed 물리 보존 수치와 정리 책임 미확정은 rollout 게이트다. 상세 HTTP/실패 계약은 [AUTH API 명세](../../../docs/api/auth-api-spec.md)를 따른다.
+Redis claim/lease·BUSY·최신 flow·stale 처리는 이번 연결에서 유지한다. Session ACK는 최종 Session/쿠키 상태와 같지 않으며 S08 늦은 쿠키 삭제 경합은 별도 미해결이다. pending/completed 물리 보존 수치와 정리 책임 미확정은 rollout 게이트다. 상세 HTTP·실패 계약은 컨트롤러 선언에서 생성하는 OpenAPI(`/v3/api-docs`)를 기준으로 하며, 실행·접근 방법은 [API 문서 안내](../../README.md#api-문서)를 따른다.

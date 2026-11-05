@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -708,7 +709,7 @@ class OAuthBoundaryIntegrationTest {
             try {
               return complete(oldFlow);
             } catch (Exception exception) {
-              throw new java.util.concurrent.CompletionException(exception);
+              throw new CompletionException(exception);
             }
           });
       assertThat(gate.awaitEntered(Duration.ofSeconds(5))).isTrue();
@@ -913,7 +914,7 @@ class OAuthBoundaryIntegrationTest {
         .orElse(null);
   }
 
-  private static java.util.List<String> responseCookieNames(HttpResponse<?> response) {
+  private static List<String> responseCookieNames(HttpResponse<?> response) {
     return response.headers().allValues("Set-Cookie").stream()
         .map(value -> value.substring(0, value.indexOf('=')))
         .toList();
@@ -989,7 +990,7 @@ class OAuthBoundaryIntegrationTest {
   private static LocalOidcProvider startProvider() {
     try {
       return LocalOidcProvider.start();
-    } catch (java.io.IOException exception) {
+    } catch (IOException exception) {
       throw new IllegalStateException(exception);
     }
   }
