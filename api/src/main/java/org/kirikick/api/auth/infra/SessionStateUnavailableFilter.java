@@ -8,9 +8,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.oauth.OAuthStaleCompletion;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.session.Session;
 import org.springframework.session.SessionRepository;
@@ -63,7 +63,7 @@ public final class SessionStateUnavailableFilter extends OncePerRequestFilter {
         response,
         objectMapper,
         HttpStatus.SERVICE_UNAVAILABLE.value(),
-        new AuthErrorResponse(
+        new ErrorResponse(
             AuthErrorCode.AUTH_STATE_UNAVAILABLE.name(),
             AuthErrorCode.AUTH_STATE_UNAVAILABLE.getMessage()));
   }

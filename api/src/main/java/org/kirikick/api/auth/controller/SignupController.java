@@ -17,7 +17,6 @@ import jakarta.validation.Valid;
 import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.kirikick.api.auth.controller.dto.AuthErrorResponse;
 import org.kirikick.api.auth.controller.dto.SignupContextResponse;
 import org.kirikick.api.auth.controller.dto.SignupRequest;
 import org.kirikick.api.auth.controller.dto.TokenResponse;
@@ -33,6 +32,7 @@ import org.kirikick.api.auth.service.AuthStateAvailability;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.service.SignupApplicationCompletionService;
 import org.kirikick.api.auth.service.SignupApplicationProofBindingValidator;
+import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.repository.UserRepository;
@@ -93,7 +93,7 @@ public class SignupController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "INVALID_SIGNUP_PROOF",
@@ -112,7 +112,7 @@ public class SignupController {
         content = {
           @Content(
               mediaType = MediaType.APPLICATION_JSON_VALUE,
-              schema = @Schema(implementation = AuthErrorResponse.class),
+              schema = @Schema(implementation = ErrorResponse.class),
               examples = {
                 @ExampleObject(
                     name = "ACCOUNT_INACTIVE",
@@ -133,7 +133,7 @@ public class SignupController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "AUTH_STATE_UNAVAILABLE",
@@ -189,7 +189,7 @@ public class SignupController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "INVALID_SIGNUP_REQUEST",
@@ -204,7 +204,7 @@ public class SignupController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "INVALID_SIGNUP_PROOF",
@@ -223,7 +223,7 @@ public class SignupController {
         content = {
           @Content(
               mediaType = MediaType.APPLICATION_JSON_VALUE,
-              schema = @Schema(implementation = AuthErrorResponse.class),
+              schema = @Schema(implementation = ErrorResponse.class),
               examples = {
                 @ExampleObject(
                     name = "AUTHENTICATION_REQUIRED",
@@ -252,7 +252,7 @@ public class SignupController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "SIGNUP_APPLICATION_ALREADY_COMPLETED",
@@ -270,7 +270,7 @@ public class SignupController {
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = AuthErrorResponse.class),
+                schema = @Schema(implementation = ErrorResponse.class),
                 examples = {
                   @ExampleObject(
                       name = "AUTH_STATE_UNAVAILABLE",
@@ -351,11 +351,11 @@ public class SignupController {
   }
 
   @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class})
-  public ResponseEntity<AuthErrorResponse> invalidRequest() {
+  public ResponseEntity<ErrorResponse> invalidRequest() {
     AuthErrorCode code = AuthErrorCode.INVALID_SIGNUP_REQUEST;
     return ResponseEntity.badRequest()
         .cacheControl(CacheControl.noStore())
-        .body(new AuthErrorResponse(code.name(), code.getMessage()));
+        .body(new ErrorResponse(code.name(), code.getMessage()));
   }
 
   private OnboardingProof currentProof(HttpSession session) {
