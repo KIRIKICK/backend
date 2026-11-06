@@ -81,6 +81,11 @@ public class AuthInfrastructureConfiguration {
   @Bean
   RedisRefreshSessionStore redisRefreshSessionStore(
       StringRedisTemplate redis, AuthProperties properties, Clock clock, Environment environment) {
+    if (properties.crossSiteCookies()
+        && (!environment.acceptsProfiles(Profiles.of("dev"))
+            || environment.acceptsProfiles(Profiles.of("local", "prod")))) {
+      throw new IllegalStateException("cross-site 쿠키는 dev 프로필에서만 사용할 수 있습니다.");
+    }
     for (String profile : new String[] {"dev", "prod"}) {
       if (environment.acceptsProfiles(Profiles.of(profile))
           && (!properties.secureCookies()
@@ -120,7 +125,7 @@ public class AuthInfrastructureConfiguration {
     cookie.setUseSecureCookie(properties.secureCookies());
     cookie.setUseHttpOnlyCookie(true);
     cookie.setCookiePath("/");
-    cookie.setSameSite("Lax");
+    cookie.setSameSite(properties.crossSiteCookies() ? "None" : "Lax");
     return cookie;
   }
 }

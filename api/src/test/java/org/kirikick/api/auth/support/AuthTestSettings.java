@@ -31,6 +31,7 @@ public final class AuthTestSettings {
     registry.add("spring.session.redis.namespace", () -> namespace + ":spring:session");
     registry.add("auth.fe-origin", () -> "http://localhost:5173");
     registry.add("auth.secure-cookies", () -> false);
+    registry.add("auth.cross-site-cookies", () -> false);
     registry.add("auth.jwt.issuer", () -> "http://localhost:8080");
     registry.add("auth.jwt.audience", () -> "kirikick-test");
     registry.add("auth.jwt.private-key-location", () -> Keys.PRIVATE.toUri().toString());

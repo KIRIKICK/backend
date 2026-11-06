@@ -47,14 +47,18 @@ public class AuthSessionController {
           """
           Access Token 없이 호출할 수 있으며, 마스킹된 CSRF 토큰과 HttpOnly CSRF 쿠키를 발급합니다.
           쿠키 값이 아니라 응답 본문의 token 값을 변경 요청의 X-XSRF-TOKEN 헤더에 전달해야 합니다.
-          CSRF 쿠키는 운영 환경에서 __Host-csrf, local 환경에서 dev-csrf를 사용합니다.
+          CSRF 쿠키는 운영 환경에서 __Host-csrf, local 환경에서 dev-csrf를 사용합니다. 기본 SameSite는 Strict이며, DEV cross-site opt-in에서는 SameSite=None; Secure를 사용합니다.
           브라우저 요청에는 credentials: include가 필요합니다.
           """)
   @ApiResponses({
     @ApiResponse(
         responseCode = "200",
         description = "마스킹된 CSRF 토큰과 CSRF 쿠키 발급",
-        headers = @Header(name = "Set-Cookie", description = "HttpOnly CSRF 쿠키"),
+        headers =
+            @Header(
+                name = "Set-Cookie",
+                description =
+                    "HttpOnly CSRF 쿠키 (기본 SameSite=Strict, DEV cross-site opt-in SameSite=None; Secure)"),
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -106,7 +110,8 @@ public class AuthSessionController {
         headers =
             @Header(
                 name = "Set-Cookie",
-                description = "회전된 Refresh Token 쿠키. HttpOnly, SameSite=Strict이며 운영에서는 Secure 적용"),
+                description =
+                    "회전된 Refresh Token 쿠키. HttpOnly, 기본 SameSite=Strict이며 DEV cross-site opt-in에서는 SameSite=None; Secure 적용"),
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,

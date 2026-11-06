@@ -73,7 +73,13 @@ class SignupControllerTest {
   void setUp() {
     controller =
         new SignupController(
-            claims, completion, bindings, sessions, users, new AuthHttpSupport(false), clock);
+            claims,
+            completion,
+            bindings,
+            sessions,
+            users,
+            new AuthHttpSupport(false, false),
+            clock);
     session = new MockHttpSession();
     slot = UUID.randomUUID();
     signupApplicationId = UUID.randomUUID();

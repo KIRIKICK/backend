@@ -25,7 +25,7 @@ class AuthInfrastructureConfigurationTest {
             "https://kauth.kakao.com/oauth/authorize",
             "https://kauth.kakao.com/oauth/token",
             "https://kauth.kakao.com/.well-known/jwks.json");
-    AuthProperties properties = new AuthProperties(null, null, null, false, null, kakao);
+    AuthProperties properties = new AuthProperties(null, null, null, false, false, null, kakao);
     AuthInfrastructureConfiguration configuration = new AuthInfrastructureConfiguration();
     ClientRegistrationRepository registrations =
         configuration.clientRegistrationRepository(properties);

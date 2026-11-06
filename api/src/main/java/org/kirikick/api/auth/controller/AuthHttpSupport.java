@@ -15,9 +15,11 @@ public final class AuthHttpSupport {
   private static final String HOST_REFRESH_COOKIE = "__Host-refresh";
   private static final String DEV_REFRESH_COOKIE = "dev-refresh";
   private final boolean secureCookies;
+  private final String sameSite;
 
-  public AuthHttpSupport(boolean secureCookies) {
+  public AuthHttpSupport(boolean secureCookies, boolean crossSiteCookies) {
     this.secureCookies = secureCookies;
+    this.sameSite = crossSiteCookies ? "None" : "Strict";
   }
 
   public static void writeError(
@@ -50,7 +52,7 @@ public final class AuthHttpSupport {
     return ResponseCookie.from(refreshCookieName(), value)
         .httpOnly(true)
         .secure(secureCookies)
-        .sameSite("Strict")
+        .sameSite(sameSite)
         .path("/")
         .maxAge(maxAge)
         .build();

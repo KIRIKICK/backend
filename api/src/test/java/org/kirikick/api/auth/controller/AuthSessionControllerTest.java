@@ -66,7 +66,7 @@ class AuthSessionControllerTest {
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
                 new AuthSessionController(
-                    mock(LoginSessionService.class), new AuthHttpSupport(true)))
+                    mock(LoginSessionService.class), new AuthHttpSupport(true, false)))
             .setControllerAdvice(new AuthExceptionHandler())
             .build();
 
@@ -91,7 +91,7 @@ class AuthSessionControllerTest {
     when(sessions.refresh("old-refresh")).thenReturn(grant);
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
-                new AuthSessionController(sessions, new AuthHttpSupport(true)))
+                new AuthSessionController(sessions, new AuthHttpSupport(true, false)))
             .setControllerAdvice(new AuthExceptionHandler())
             .build();
 
@@ -133,7 +133,7 @@ class AuthSessionControllerTest {
     when(sessions.refresh("old-refresh")).thenThrow(new DomainException(errorCode));
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
-                new AuthSessionController(sessions, new AuthHttpSupport(true)))
+                new AuthSessionController(sessions, new AuthHttpSupport(true, false)))
             .setControllerAdvice(new AuthExceptionHandler())
             .build();
 

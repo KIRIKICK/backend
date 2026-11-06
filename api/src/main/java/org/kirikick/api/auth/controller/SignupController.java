@@ -75,7 +75,7 @@ public class SignupController {
       description =
           """
           현재 브라우저의 유효한 OAuth 가입 증명에 연결된 가입 신청만 반환합니다. Access Token은 필요하지 않습니다.
-          OAuth 콜백에서 발급된 임시 세션 쿠키(운영 __Host-onboarding, local dev-onboarding)가 필요합니다.
+          OAuth 콜백에서 발급된 임시 세션 쿠키(운영 __Host-onboarding, local dev-onboarding)가 필요합니다. onboarding 쿠키는 기본 SameSite=Lax이며, DEV cross-site opt-in에서는 SameSite=None; Secure를 사용합니다.
           브라우저 요청에는 credentials: include를 사용해야 하며, 반환된 signupApplicationId만으로 가입할 수는 없습니다.
           """)
   @ApiResponses({
@@ -154,7 +154,7 @@ public class SignupController {
       description =
           """
           가입 신청·브라우저 증명·OAuth 신원이 모두 일치할 때만 회원을 생성합니다. Access Token은 필요하지 않습니다.
-          GET /auth/signup/context에서 받은 signupApplicationId와 임시 세션 쿠키(운영 __Host-onboarding, local dev-onboarding)를 함께 전달합니다.
+          GET /auth/signup/context에서 받은 signupApplicationId와 임시 세션 쿠키(운영 __Host-onboarding, local dev-onboarding)를 함께 전달합니다. onboarding 쿠키는 기본 SameSite=Lax이며, DEV cross-site opt-in에서는 SameSite=None; Secure를 사용합니다.
           허용된 Origin(AUTH_FE_ORIGIN), CSRF 쿠키와 GET /auth/csrf에서 받은 X-XSRF-TOKEN 헤더가 필요합니다.
           브라우저 요청에는 credentials: include를 사용해야 합니다.
           성공하면 Access Token을 본문으로, Refresh Token을 HttpOnly 쿠키로 발급하고 임시 가입 세션을 종료합니다.
@@ -173,7 +173,7 @@ public class SignupController {
           @Header(
               name = "Set-Cookie",
               description =
-                  "HttpOnly Refresh 쿠키(운영 __Host-refresh, local dev-refresh, SameSite=Strict) 발급 및 임시 가입 세션 쿠키 삭제. 여러 Set-Cookie 헤더가 반환될 수 있습니다."),
+                  "HttpOnly Refresh 쿠키(운영 __Host-refresh, local dev-refresh, 기본 SameSite=Strict, DEV cross-site opt-in SameSite=None; Secure) 발급 및 임시 가입 세션 쿠키 삭제. 여러 Set-Cookie 헤더가 반환될 수 있습니다."),
           @Header(name = "Cache-Control", description = "no-store"),
           @Header(name = "Pragma", description = "no-cache")
         },

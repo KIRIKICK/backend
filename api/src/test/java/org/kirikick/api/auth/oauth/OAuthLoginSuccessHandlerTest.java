@@ -238,7 +238,7 @@ class OAuthLoginSuccessHandlerTest {
             users,
             logins,
             publications,
-            new AuthHttpSupport(false),
+            new AuthHttpSupport(false, false),
             new ObjectMapper(),
             guard,
             Clock.fixed(now, ZoneOffset.UTC),
