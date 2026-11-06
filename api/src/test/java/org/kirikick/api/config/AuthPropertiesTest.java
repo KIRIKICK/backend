@@ -65,6 +65,7 @@ class AuthPropertiesTest {
         sessionNamespace,
         origin,
         false,
+        false,
         new AuthProperties.Jwt("https://api.example", "kirikick", key, key),
         new AuthProperties.Kakao(
             "test-client",

@@ -56,7 +56,7 @@ public class AuthSecurityConfiguration {
 
   @Bean
   AuthHttpSupport authHttpSupport(AuthProperties properties) {
-    return new AuthHttpSupport(properties.secureCookies());
+    return new AuthHttpSupport(properties.secureCookies(), properties.crossSiteCookies());
   }
 
   @Bean
@@ -136,7 +136,11 @@ public class AuthSecurityConfiguration {
     csrf.setHeaderName("X-XSRF-TOKEN");
     csrf.setCookiePath("/");
     csrf.setCookieCustomizer(cookie ->
-        cookie.httpOnly(true).secure(properties.secureCookies()).sameSite("Strict").path("/"));
+        cookie
+            .httpOnly(true)
+            .secure(properties.secureCookies())
+            .sameSite(properties.crossSiteCookies() ? "None" : "Strict")
+            .path("/"));
     CorsConfiguration cors =
         new CorsConfiguration() {
           @Override

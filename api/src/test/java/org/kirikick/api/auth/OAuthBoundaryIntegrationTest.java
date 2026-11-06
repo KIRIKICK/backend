@@ -936,6 +936,7 @@ class OAuthBoundaryIntegrationTest {
           "auth.session-redis-namespace",
           "auth.fe-origin",
           "auth.secure-cookies",
+          "auth.cross-site-cookies",
           "auth.jwt.issuer",
           "auth.jwt.audience",
           "auth.jwt.private-key-location",
@@ -969,6 +970,7 @@ class OAuthBoundaryIntegrationTest {
 
   private void assertSameAuthConfiguration(AuthProperties secondary) {
     assertThat(secondary.secureCookies()).isFalse();
+    assertThat(secondary.crossSiteCookies()).isEqualTo(authProperties.crossSiteCookies());
     assertThat(secondary.redisNamespace()).isEqualTo(authProperties.redisNamespace());
     assertThat(secondary.sessionRedisNamespace()).isEqualTo(authProperties.sessionRedisNamespace());
     assertThat(secondary.feOrigin()).isEqualTo(authProperties.feOrigin());

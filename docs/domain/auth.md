@@ -74,7 +74,11 @@ kirikick:<environment>:auth:*
 
 OAuth/가입 temporary session은 HTTPS에서 `__Host-onboarding`, Secure, HttpOnly, Path `/`, Domain 없음, SameSite Lax다. 카카오 top-level callback을 위해 Lax를 쓴다. Refresh와 CSRF cookie는 SameSite Strict다.
 
-운영은 HTTPS same-site FE/API 또는 same-origin reverse proxy를 기본으로 한다. cross-site cookie 정책은 이 문서의 범위가 아니며 별도 security review가 필요하다.
+`AUTH_CROSS_SITE_COOKIES`의 기본값은 `false`다. `true`는 Vercel 기본 도메인과 Cloud Run `run.app`처럼 서로 다른 사이트에서 수행하는 **DEV 브라우저 검증 전용** opt-in이다. dev 프로필에서만 허용하며, local/prod 프로필 또는 `secure-cookies=false`와 함께 설정하면 기동을 거절한다. opt-in 시 onboarding·Refresh·CSRF 세 쿠키는 모두 `SameSite=None; Secure`가 된다. Origin·CSRF·OAuth state·PKCE·nonce·브라우저 binding·Refresh 재사용 탐지 정책은 변경하지 않는다.
+
+`SameSite=None; Secure`는 브라우저의 third-party-cookie 또는 anti-tracking 정책을 우회하지 않는다. 따라서 실제 브라우저 E2E 검증은 별도 rollout gate이며, 이 opt-in은 운영의 same-site/same-origin 권장을 대체하지 않는다.
+
+운영은 HTTPS same-site FE/API 또는 same-origin reverse proxy를 기본으로 한다. 운영 cross-site cookie 허용은 이번 DEV opt-in 범위가 아니며 별도 security review가 필요하다.
 
 OAuth permission deadline은 10분, signup proof deadline은 5분이다. Spring Session idle timeout은 각각 10분·5분이며 context/CSRF 조회가 permission deadline을 연장하지 않는다. OAuth 시작과 OAuth→proof 전환은 기존 Session ID를 rotate하거나 attribute를 복사하지 않고, slot ID만 전달한 genuinely fresh Session을 만든다. Spring Security의 일반 session-fixation rotation은 이 명시적 lifecycle·binding과 충돌하므로 OAuth 흐름에는 적용하지 않는다. 한 브라우저에는 하나의 in-flight flow만 유지한다.
 

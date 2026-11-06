@@ -16,8 +16,14 @@ public record AuthProperties(
     @NotBlank String sessionRedisNamespace,
     @NotBlank String feOrigin,
     boolean secureCookies,
+    boolean crossSiteCookies,
     @Valid @NotNull Jwt jwt,
     @Valid @NotNull Kakao kakao) {
+
+  @AssertTrue(message = "cross-site 쿠키에는 Secure 설정이 필요합니다.")
+  public boolean isCrossSiteCookiesSecure() {
+    return !crossSiteCookies || secureCookies;
+  }
 
   @AssertTrue(message = "인증과 임시 세션의 Redis namespace는 서로 겹칠 수 없습니다.")
   public boolean isNamespacesIsolated() {
