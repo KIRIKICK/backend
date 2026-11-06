@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.auth.service.AuthStateAvailability;
@@ -14,6 +15,7 @@ import org.kirikick.api.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class UserProfileService {
 
@@ -48,6 +50,7 @@ public class UserProfileService {
     if (!AuthStateAvailability.isFailure(exception)) {
       return exception;
     }
+    log.warn("user-profile-unavailable exceptionType={}", exception.getClass().getName());
     return new DomainException(UserErrorCode.PROFILE_UNAVAILABLE);
   }
 

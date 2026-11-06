@@ -10,11 +10,17 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.common.exception.DomainException;
@@ -23,6 +29,7 @@ import org.kirikick.api.user.domain.exception.UserErrorCode;
 import org.kirikick.api.user.repository.UserRepository;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -115,6 +122,45 @@ class UserProfileServiceTest {
     when(identities.findProvidersByUserId(17L)).thenThrow(new QueryTimeoutException("timeout"));
 
     assertError(() -> service().getProfile(userUuid), UserErrorCode.PROFILE_UNAVAILABLE);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void logsOnlyTheAvailabilityFailureClassAtWarn(boolean providerLookupFails) {
+    UUID userUuid = UUID.randomUUID();
+    String sensitiveMessage = "private-query-message";
+    String sensitiveCause = "private-query-cause";
+    QueryTimeoutException failure =
+        new QueryTimeoutException(sensitiveMessage, new IllegalStateException(sensitiveCause));
+    if (providerLookupFails) {
+      when(users.findByUuid(userUuid))
+          .thenReturn(Optional.of(user(17L, userUuid, "display", null)));
+      when(identities.findProvidersByUserId(17L)).thenThrow(failure);
+    } else {
+      when(users.findByUuid(userUuid)).thenThrow(failure);
+    }
+
+    Logger logger = (Logger) LoggerFactory.getLogger(UserProfileService.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      assertError(() -> service().getProfile(userUuid), UserErrorCode.PROFILE_UNAVAILABLE);
+
+      assertThat(appender.list)
+          .singleElement()
+          .satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                .contains("exceptionType=" + QueryTimeoutException.class.getName())
+                .doesNotContain(
+                    sensitiveMessage, sensitiveCause, IllegalStateException.class.getName());
+            assertThat(event.getThrowableProxy()).isNull();
+          });
+    } finally {
+      logger.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
