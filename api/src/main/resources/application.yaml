@@ -27,8 +27,8 @@ spring:
       configure-action: none
       namespace: ${auth.session-redis-namespace}
 auth:
-  redis-namespace: ${AUTH_REDIS_NAMESPACE}:auth
-  session-redis-namespace: ${AUTH_REDIS_NAMESPACE}:spring:session
+  redis-namespace: ${REDIS_NAMESPACE}:auth
+  session-redis-namespace: ${REDIS_NAMESPACE}:spring:session
   fe-origin: ${AUTH_FE_ORIGIN}
   secure-cookies: true
   jwt:

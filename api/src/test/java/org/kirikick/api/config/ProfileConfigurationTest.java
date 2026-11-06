@@ -249,8 +249,7 @@ class ProfileConfigurationTest {
   @ParameterizedTest
   @ValueSource(strings = {"dev", "prod"})
   void separatesSessionAndLoginNamespacesOnTheSameRedis(String profile) {
-    profileConfiguration(
-            profile, "spring.config.import=", "AUTH_REDIS_NAMESPACE=kirikick:" + profile)
+    profileConfiguration(profile, "spring.config.import=", "REDIS_NAMESPACE=kirikick:" + profile)
         .run(context -> {
           Environment environment = context.getEnvironment();
           assertThat(environment.getProperty("auth.redis-namespace"))
