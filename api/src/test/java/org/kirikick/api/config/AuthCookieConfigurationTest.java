@@ -12,8 +12,11 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.auth.infra.RedisRefreshSessionStore;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -94,6 +97,44 @@ class AuthCookieConfigurationTest {
         });
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"local", "prod", "test", "dev,prod", "dev,local"})
+  void rejectsOptInOutsideDevEvenWithLazyInitialization(String profiles) {
+    lazyConfiguration(
+            profiles, Map.of("AUTH_CROSS_SITE_COOKIES", "true", "AUTH_SECURE_COOKIES", "true"))
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("cross-site 쿠키는 dev 프로필에서만 사용할 수 있습니다.");
+        });
+  }
+
+  @Test
+  void rejectsInsecureOptInEvenWithLazyInitialization() {
+    lazyConfiguration(
+            "dev", Map.of("AUTH_CROSS_SITE_COOKIES", "true", "AUTH_SECURE_COOKIES", "false"))
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("cross-site 쿠키에는 Secure 설정이 필요합니다.");
+        });
+  }
+
+  @ParameterizedTest
+  @CsvSource({"local,false", "dev,false", "dev,true", "prod,false"})
+  void validatesCookiePoliciesAtStartupWithLazyInitialization(
+      String profiles, boolean crossSiteCookies) {
+    lazyConfiguration(
+            profiles, Map.of("AUTH_CROSS_SITE_COOKIES", Boolean.toString(crossSiteCookies)))
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          ConfigurableListableBeanFactory beans =
+              context.getSourceApplicationContext().getBeanFactory();
+          assertThat(beans.containsSingleton("redisRefreshSessionStore")).isTrue();
+          assertThat(beans.containsSingleton("jwtTokenService")).isFalse();
+        });
+  }
+
   private static Cookie onboardingCookie(AuthProperties properties, int maxAge) {
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setSecure(properties.secureCookies());
@@ -116,6 +157,20 @@ class AuthCookieConfigurationTest {
   }
 
   private ApplicationContextRunner configuration(String profiles, Map<String, Object> options) {
+    return configuration(profiles, options, Binding.class);
+  }
+
+  private ApplicationContextRunner lazyConfiguration(String profiles, Map<String, Object> options) {
+    return configuration(profiles, options, AuthInfrastructureConfiguration.class)
+        .withPropertyValues("spring.main.lazy-initialization=true")
+        // ApplicationContextRunner는 SpringApplication의 지연 초기화 후처리기를 자동 등록하지 않는다.
+        .withInitializer(context ->
+            context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()))
+        .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class));
+  }
+
+  private ApplicationContextRunner configuration(
+      String profiles, Map<String, Object> options, Class<?> configuration) {
     Map<String, Object> variables =
         new HashMap<>(
             Map.of(
@@ -141,7 +196,7 @@ class AuthCookieConfigurationTest {
                       SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, variables));
           new ConfigDataApplicationContextInitializer().initialize(context);
         })
-        .withUserConfiguration(Binding.class);
+        .withUserConfiguration(configuration);
   }
 
   @Configuration(proxyBeanMethods = false)

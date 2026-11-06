@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -78,7 +79,9 @@ public class AuthInfrastructureConfiguration {
     return Clock.systemUTC();
   }
 
+  /** 쿠키·배포 설정 오류가 첫 요청까지 숨지 않도록 기동 시 검증한다. */
   @Bean
+  @Lazy(false)
   RedisRefreshSessionStore redisRefreshSessionStore(
       StringRedisTemplate redis, AuthProperties properties, Clock clock, Environment environment) {
     if (properties.crossSiteCookies()
