@@ -24,6 +24,12 @@ backend/
 - [USER: 회원 프로필](docs/domain/user.md)
 - [AUTH: 인증 상태·Redis 운영 정책](docs/domain/auth.md)
 
+## DEV 배포
+
+GitHub Actions 기반 DEV Cloud Run CD의 초기 설정, 배포 관찰, traffic-only 수동 복구와 한계는
+[DEV Cloud Run CD](docs/deployment/cloud-run-cd.md)를 참고하세요. PROD 배포와 GCP 리소스·IAM·Secret
+설정 변경은 이 workflow의 범위가 아닙니다.
+
 ## 실행과 검증
 
 `backend` 디렉터리에서 실행합니다.
