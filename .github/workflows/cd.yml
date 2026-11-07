@@ -1,0 +1,114 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-run-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy-dev:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.id == github.event.repository.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      AR_REPOSITORY: ${{ vars.AR_REPOSITORY }}
+
+    steps:
+      - name: Check required DEV settings
+        env:
+          WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Missing or invalid upstream CI commit" >&2
+            exit 1
+          fi
+          for name in GCP_PROJECT_ID GCP_REGION CLOUD_RUN_SERVICE AR_REPOSITORY WIF_PROVIDER DEPLOY_SERVICE_ACCOUNT; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing repository variable: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Checkout the tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Authenticate to Google Cloud with WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Publish and roll out the tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          require_current_main() {
+            local main_sha
+            main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+            if [[ ! "$main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Unable to resolve main SHA" >&2
+              exit 1
+            fi
+            if [[ "$main_sha" != "$SOURCE_SHA" ]]; then
+              printf 'SUPERSEDED_NOOP: run=%s main=%s\n' "$SOURCE_SHA" "$main_sha" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          }
+
+          require_current_main
+          registry="${GCP_REGION}-docker.pkg.dev"
+          image_base="${registry}/${GCP_PROJECT_ID}/${AR_REPOSITORY}/${CLOUD_RUN_SERVICE}"
+          image_tag="${image_base}:${SOURCE_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gcloud auth configure-docker "$registry" --quiet
+          ./gradlew :api:bootBuildImage --no-daemon \
+            --imageName="$image_tag" --imagePlatform=linux/amd64 --publishImage
+          image_digest="$(gcloud artifacts docker images describe "$image_tag" \
+            --project="$GCP_PROJECT_ID" --format='value(image_summary.fully_qualified_digest)')"
+          digest_hex="${image_digest#"${image_base}@sha256:"}"
+          if [[ "$image_digest" != "${image_base}@sha256:"* || ! "$digest_hex" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Registry returned an unexpected image digest" >&2
+            exit 1
+          fi
+          printf 'Published commit=%s image=%s\n' "$SOURCE_SHA" "$image_digest" >> "$GITHUB_STEP_SUMMARY"
+
+          require_current_main
+          python3 scripts/deploy_dev_cloud_run.py \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --service "$CLOUD_RUN_SERVICE" --image "$image_digest" \
+            --revision-suffix "gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --tag "gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
