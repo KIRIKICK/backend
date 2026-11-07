@@ -15,7 +15,9 @@ GitHub Actions는 `main`에 merge되어 push된 커밋의 CI가 성공한 경우
 7. 후보 revision으로 트래픽을 100% 이동합니다.
 8. 기본 서비스 URL의 liveness·readiness를 다시 확인하고, 최종 트래픽을 조회합니다.
 
-후보 검증 실패는 기존 트래픽을 바꾸지 않습니다. 전환 명령이 timeout 또는 실패했더라도 후보에 트래픽이 일부 배정됐는지 다시 조회합니다. 후보의 배정이 확인되면 전환 전의 **구체 revision별 비율**로만 복귀를 시도합니다. 관련 없는 수동 변경이 섞이면 자동으로 덮어쓰지 않고 실패를 기록합니다.
+후보 검증 실패는 기존 revision별 트래픽 비율을 유지합니다. 다만 기존 traffic이 `LATEST`를 가리키면, `--no-traffic`은 그 대상을 후보 배포 직전의 구체 revision으로 고정합니다. 따라서 후보 검증이 실패해도 기존 비율은 유지되지만, 이후 수동 배포가 자동으로 트래픽을 받지는 않습니다. 수동 배포 시에는 의도한 revision으로 트래픽을 명시적으로 전환해야 합니다. 동적 `LATEST` 추종을 복원하는 `--to-latest`는 이 CD의 복구 절차에서 사용하지 않습니다.
+
+전환 명령이 timeout 또는 실패했더라도 후보에 트래픽이 일부 배정됐는지 다시 조회합니다. 후보의 배정이 확인되면 전환 전의 **구체 revision별 비율**로만 복귀를 시도합니다. 관련 없는 수동 변경이 섞이면 자동으로 덮어쓰지 않고 실패를 기록합니다.
 
 CD는 다음을 변경하지 않습니다.
 
@@ -106,11 +108,15 @@ workflow summary에서 다음만 기록·확인합니다.
 - 전환 전(`prior_traffic`)·관측된(`observed_traffic`)·최종 revision별 traffic map
 - 현재 phase, rollback armed/attempted/succeeded, 후보 ready, endpoint별 health 결과, tag cleanup 결과
 
+runner 강제 종료로 summary 또는 `prior_traffic`이 없으면, 사용 가능한 배포 step의 구조화 로그에서 `"event": "snapshot"` 레코드를 찾아 `prior_traffic`의 **구체 revision 이름과 비율**을 확인합니다. 같은 run·commit·후보 revision의 기록인지 확인한 뒤 아래 수동 복구 절차에 사용합니다. snapshot 로그도 없으면 현재 traffic만으로 과거 비율을 추정하지 말고, 별도로 보관한 배포 전 기록을 확보한 후 복구합니다.
+
 응답 본문, cookie, token, Secret, 환경 변수, 전체 Cloud Run 서비스 YAML은 summary에 기록하지 않습니다.
 상태 조회가 실패하면 `observed_traffic`은 `null`입니다. 이전 조회값을 현재 트래픽으로 간주하지 말고 수동으로 확인합니다.
 `rollback_succeeded`는 직전 트래픽 비율의 복원 확인이며, 애플리케이션·DB의 정상 복구까지 보장하지 않습니다.
 
-CI의 기존 concurrency 정책은 CI에만 적용됩니다. CD는 별도 DEV concurrency group에서 진행 중인 rollout을 자동 취소하지 않습니다. GitHub concurrency는 FIFO가 아니므로 빠르게 연속 push하면 모든 중간 SHA가 DEV에 배포되지 않을 수 있습니다. 이미지 게시 전과 Cloud Run 변경 직전에 현재 `main` SHA와 `SOURCE_SHA`를 확인하며, 오래된 실행은 Cloud Run을 변경하지 않고 `SUPERSEDED_NOOP`으로 성공 종료합니다.
+CI의 기존 concurrency 정책은 CI에만 적용됩니다. CD의 별도 DEV concurrency group은 CD 실행끼리만 직렬화하며 진행 중인 rollout을 자동 취소하지 않습니다. main push나 CI 실행을 막는 잠금은 아닙니다. GitHub concurrency는 FIFO가 아니므로 빠르게 연속 push하면 모든 중간 SHA가 DEV에 배포되지 않을 수 있습니다.
+
+이미지 게시 전과 최초 Cloud Run 변경 직전에 현재 `main` SHA와 `SOURCE_SHA`를 확인하며, 그 시점에 오래된 실행은 `SUPERSEDED_NOOP`으로 성공 종료합니다. 이 확인은 시점별 snapshot입니다. 마지막 확인 이후 main에 새 커밋이 반영되면 진행 중인 이전 SHA가 후보 배포·검증을 마치고 트래픽을 받을 수 있으며, **트래픽 전환 순간에도 최신 main이라는 보장은 하지 않습니다.**
 
 후보 URL은 후보 revision을 검증하는 용도이고, 전환 후 검증은 기본 서비스 URL에서 수행합니다. 후보 revision suffix와 후보 tag는 각각 `gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}` 형식을 사용합니다. 후보 tag cleanup만 실패한 경우 서비스는 이미 정상 revision으로 전환된 상태일 수 있습니다. 이 경우 workflow는 실패로 보고하고 tag 수동 정리를 요구하지만 정상 traffic을 이전 revision으로 되돌리지는 않습니다.
 
@@ -139,13 +145,21 @@ gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
 명령 뒤에는 다시 traffic map을 조회하고, 기본 서비스 URL의 두 health endpoint를 확인합니다.
 
 ```sh
-SERVICE_URL="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
-  --project="$GCP_PROJECT_ID" \
-  --region="$GCP_REGION" \
-  --format='value(status.url)')"
+(
+  SERVICE_URL="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+    --project="$GCP_PROJECT_ID" \
+    --region="$GCP_REGION" \
+    --format='value(status.url)')" || exit 1
 
-curl --fail --silent --show-error "$SERVICE_URL/actuator/health/liveness"
-curl --fail --silent --show-error "$SERVICE_URL/actuator/health/readiness"
+  for endpoint in liveness readiness; do
+    http_status="$(curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      "$SERVICE_URL/actuator/health/$endpoint")" || exit 1
+    if [ "$http_status" != "200" ]; then
+      printf '%s: expected HTTP 200, got %s\n' "$endpoint" "$http_status" >&2
+      exit 1
+    fi
+  done
+)
 ```
 
 위 `update-traffic` 구문은 설치된 gcloud CLI 도움말로 확인한 `--to-revisions=REVISION=PERCENTAGE` 형식입니다. 실제 Cloud Run·네트워크·자격 증명에 대한 실행 검증은 이 문서 작성 환경에서 수행하지 않았습니다. traffic 복귀는 Flyway migration, DB schema/data, 외부 Secret 변경 또는 다른 외부 부작용을 되돌리지 않습니다.
@@ -170,5 +184,6 @@ curl --fail --silent --show-error "$SERVICE_URL/actuator/health/readiness"
 관련 공식 문서:
 
 - [Cloud Run rollout, rollback, traffic migration](https://cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration)
+- [`gcloud run deploy --no-traffic`](https://cloud.google.com/sdk/gcloud/reference/run/deploy#--no-traffic)
 - [`gcloud run services update-traffic`](https://cloud.google.com/sdk/gcloud/reference/run/services/update-traffic)
 - [Spring Boot OCI image packaging](https://docs.spring.io/spring-boot/gradle-plugin/packaging-oci-image.html)

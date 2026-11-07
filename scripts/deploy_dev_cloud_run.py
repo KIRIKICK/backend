@@ -148,8 +148,11 @@ class Rollout:
         }, sort_keys=True), flush=True)
 
     def command(self, argv, timeout=COMMAND_TIMEOUT):
+        """Run a bounded command while preserving termination requests for execute()."""
         try:
             return self.runner(argv, capture_output=True, text=True, timeout=timeout, check=False)
+        except InterruptedError:
+            raise
         except (OSError, subprocess.SubprocessError):
             raise DeploymentError("external_command_failed_or_timed_out") from None
 

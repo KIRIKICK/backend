@@ -157,6 +157,56 @@ class RolloutTest(unittest.TestCase):
         return [argv for argv in self.commands(fake, ["gcloud", "run", "services", "update-traffic"])
                 if any(argument.startswith("--to-revisions=") for argument in argv)]
 
+    def test_command_preserves_interrupted_error(self):
+        interruption = InterruptedError("termination requested")
+
+        def interrupt(argv, **kwargs):
+            raise interruption
+
+        with self.assertRaises(InterruptedError) as raised:
+            self.rollout(interrupt).command(["gcloud", "run", "services", "describe", SERVICE])
+        self.assertIs(raised.exception, interruption)
+
+    def test_interrupted_candidate_health_stops_without_retry_or_promotion(self):
+        class InterruptedHealth(FakeRunner):
+            health_interrupted = False
+
+            def __call__(self, argv, **kwargs):
+                if argv[0] == "curl" and not self.health_interrupted:
+                    self.health_interrupted = True
+                    self.calls.append(list(argv))
+                    raise InterruptedError()
+                return super().__call__(argv, **kwargs)
+
+        fake = InterruptedHealth()
+        rollout = self.rollout(fake)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(cd.DeploymentError):
+            rollout.execute()
+        self.assertEqual(len(self.commands(fake, ["curl"])), 1)
+        self.assertEqual(self.promotions(fake), [])
+        self.assertEqual(fake.current, fake.prior)
+        self.assertFalse(rollout.rollback_attempted)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["reason"], "interrupted")
+
+    def test_interrupted_command_during_promotion_recovers_prior_traffic(self):
+        class InterruptedPromotion(FakeRunner):
+            def __call__(self, argv, **kwargs):
+                result = super().__call__(argv, **kwargs)
+                if f"--to-revisions={self.candidate}=100" in argv:
+                    raise InterruptedError()
+                return result
+
+        fake = InterruptedPromotion()
+        rollout = self.rollout(fake)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(cd.DeploymentError):
+            rollout.execute()
+        self.assertTrue(rollout.rollback_attempted)
+        self.assertTrue(rollout.rollback_succeeded)
+        self.assertEqual(fake.current, fake.prior)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["reason"], "interrupted")
+
     def test_config_builds_candidate_revision_from_service_and_suffix(self):
         self.assertEqual(self.config().revision, f"{SERVICE}-{SUFFIX}")
 
@@ -446,6 +496,37 @@ class RolloutTest(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(cd.DeploymentError):
             self.rollout(fake).execute()
         self.assertNotIn("redis://secret.example", output.getvalue())
+
+
+class ManualRecoveryHealthTest(unittest.TestCase):
+    def test_documented_health_checks_accept_only_http_200(self):
+        document = (ROOT / "docs/deployment/cloud-run-cd.md").read_text(encoding="utf-8")
+        script = next(block.split("```", 1)[0] for block in document.split("```sh\n")[1:]
+                      if 'SERVICE_URL="' in block and "/actuator/health/" in block)
+        commands = """
+gcloud() { printf '%s\\n' 'https://service-test.a.run.app'; }
+curl() {
+  local url="${@: -1}"
+  printf '%s\\n' "$url" >> "$HEALTH_LOG"
+  if [[ "$url" == */liveness ]]; then
+    printf '%s' "$LIVENESS_STATUS"
+  else
+    printf '%s' "$READINESS_STATUS"
+  fi
+}
+"""
+        for liveness, readiness in ((200, 200), (302, 200), (200, 302),
+                                    (204, 200), (200, 204), (503, 200), (200, 503)):
+            with self.subTest(liveness=liveness, readiness=readiness), tempfile.TemporaryDirectory() as temp:
+                log = Path(temp) / "health.log"
+                env = {**os.environ, "HEALTH_LOG": str(log),
+                       "LIVENESS_STATUS": str(liveness), "READINESS_STATUS": str(readiness)}
+                result = subprocess.run(["bash", "-c", commands + script], env=env,
+                                        capture_output=True, text=True, check=False, timeout=5)
+                self.assertEqual(result.returncode, 0 if (liveness, readiness) == (200, 200) else 1,
+                                 result.stderr)
+                endpoints = [url.rsplit("/", 1)[-1] for url in log.read_text().splitlines()]
+                self.assertEqual(endpoints, ["liveness", "readiness"] if liveness == 200 else ["liveness"])
 
 
 class WorkflowPublishShellTest(unittest.TestCase):
