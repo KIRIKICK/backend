@@ -53,12 +53,14 @@ class FakeRunner:
     """Small command boundary fake: rollout logic still builds and interprets argv/JSON."""
 
     def __init__(self, traffic=None, promotion_result=0, post_health=200, candidate_ready=True,
-                 candidate_image=IMAGE, candidate_health=None, cleanup_result=0, rollback_result=0):
+                 candidate_image=IMAGE, candidate_health=None, cleanup_result=0, rollback_result=0,
+                 promotion_traffic=None):
         self.prior = traffic or [{"revisionName": f"{SERVICE}-old", "percent": 100}]
         self.current = list(self.prior)
         self.calls = []
         self.deployed = False
         self.promotion_result = promotion_result
+        self.promotion_traffic = promotion_traffic
         self.post_health = post_health
         self.candidate_ready = candidate_ready
         self.candidate_image = candidate_image
@@ -105,7 +107,8 @@ class FakeRunner:
                 self.current = [{"revisionName": f"{SERVICE}-other", "percent": 100}]
                 raise subprocess.TimeoutExpired(argv, timeout)
             if is_candidate_promotion:
-                self.current = [{"revisionName": self.candidate, "percent": 100}]
+                self.current = (self.promotion_traffic if self.promotion_traffic is not None
+                                else [{"revisionName": self.candidate, "percent": 100}])
             else:
                 if self.rollback_result:
                     return completed(argv, returncode=self.rollback_result)
@@ -113,7 +116,8 @@ class FakeRunner:
                     {"revisionName": revision_name, "percent": int(percent)}
                     for revision_name, percent in (entry.split("=", 1) for entry in target.split("=", 1)[1].split(","))
                 ]
-            return completed(argv, returncode=self.promotion_result if isinstance(self.promotion_result, int) else 0)
+            return completed(argv, returncode=self.promotion_result
+                             if is_candidate_promotion and isinstance(self.promotion_result, int) else 0)
         if argv[:4] == ["gcloud", "run", "services", "update-traffic"]:
             raise AssertionError("unreachable")
         if argv[0] == "curl":
@@ -229,6 +233,71 @@ class RolloutTest(unittest.TestCase):
         pre_promotion_curls = [url for url in curl_urls if "---" in url]
         self.assertTrue(any("candidate---service-test.a.run.app/actuator/health/liveness" in url for url in pre_promotion_curls))
         self.assertTrue(any("candidate---service-test.a.run.app/actuator/health/readiness" in url for url in pre_promotion_curls))
+
+    def test_candidate_health_exhaustion_keeps_prior_traffic(self):
+        for endpoint, successful_checks in (("liveness", []), ("readiness", [200])):
+            with self.subTest(endpoint=endpoint):
+                fake = FakeRunner(candidate_health=successful_checks + [503] * cd.HEALTH_ATTEMPTS)
+                rollout = self.rollout(fake)
+                with self.assertRaises(cd.DeploymentError):
+                    rollout.execute()
+                checks = [argv for argv in self.commands(fake, ["curl"])
+                          if argv[-1].endswith(f"/actuator/health/{endpoint}")]
+                self.assertEqual(len(checks), cd.HEALTH_ATTEMPTS)
+                self.assertEqual(rollout.health_checks[f"candidate_{endpoint}"], "503")
+                self.assertEqual(self.promotions(fake), [])
+                self.assertEqual(fake.current, fake.prior)
+                self.assertFalse(rollout.rollback_attempted)
+                self.assertEqual(rollout.result, "failed")
+
+    def test_promotion_command_failure_recovers_according_to_observed_traffic(self):
+        prior = [{"revisionName": f"{SERVICE}-old", "percent": 100}]
+        candidate = [{"revisionName": f"{SERVICE}-{SUFFIX}", "percent": 100}]
+        unrelated = [{"revisionName": f"{SERVICE}-other", "percent": 100}]
+        for name, observed, should_recover in (
+                ("unchanged", prior, False),
+                ("candidate", candidate, True),
+                ("unrelated", unrelated, False)):
+            with self.subTest(traffic=name):
+                fake = FakeRunner(promotion_result=1, promotion_traffic=observed)
+                rollout = self.rollout(fake)
+                with self.assertRaises(cd.DeploymentError):
+                    rollout.execute()
+                updates = self.promotions(fake)
+                self.assertEqual(len(updates), 1 + int(should_recover))
+                if should_recover:
+                    self.assertIn(f"--to-revisions={SERVICE}-old=100", updates[-1])
+                self.assertEqual(fake.current, prior if should_recover else observed)
+                self.assertEqual(rollout.rollback_attempted, should_recover)
+                self.assertEqual(rollout.rollback_succeeded, should_recover)
+                self.assertEqual(rollout.result, "failed")
+
+    def test_partial_promotion_restores_prior_revision_percentages(self):
+        prior = [
+            {"revisionName": f"{SERVICE}-previous-a", "percent": 90},
+            {"revisionName": f"{SERVICE}-previous-b", "percent": 10},
+        ]
+        partial = [
+            {"revisionName": f"{SERVICE}-previous-a", "percent": 60},
+            {"revisionName": f"{SERVICE}-previous-b", "percent": 10},
+            {"revisionName": f"{SERVICE}-{SUFFIX}", "percent": 30},
+        ]
+        for promotion_result in (0, 1):
+            with self.subTest(promotion_result=promotion_result):
+                fake = FakeRunner(traffic=prior, promotion_result=promotion_result,
+                                  promotion_traffic=partial)
+                rollout = self.rollout(fake)
+                with self.assertRaises(cd.DeploymentError):
+                    rollout.execute()
+                updates = self.promotions(fake)
+                self.assertEqual(len(updates), 2)
+                self.assertIn(f"--to-revisions={SERVICE}-previous-a=90,{SERVICE}-previous-b=10",
+                              updates[-1])
+                self.assertEqual(fake.current, prior)
+                self.assertEqual(rollout.observed, cd.traffic_map(service(prior)))
+                self.assertTrue(rollout.rollback_attempted)
+                self.assertTrue(rollout.rollback_succeeded)
+                self.assertEqual(rollout.result, "failed")
 
     def test_post_promotion_health_failure_restores_prior_concrete_traffic(self):
         fake = FakeRunner(post_health=503)
