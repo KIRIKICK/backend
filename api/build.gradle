@@ -46,6 +46,28 @@ sourceSets {
 	test.java.srcDir rootProject.file('architecture-tests/src/regressionTest/java')
 }
 
+tasks.named('test') {
+	filter {
+		excludeTestsMatching 'org.kirikick.api.support.PostgresInstantTimeZoneTest'
+	}
+}
+
+def postgresInstantTimeZoneTest = tasks.register('postgresInstantTimeZoneTest', Test) {
+	description = 'Verifies Instant persistence on a Flyway schema with different JVM and PostgreSQL time zones.'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	systemProperty 'user.timezone', 'Asia/Seoul'
+	filter {
+		includeTestsMatching 'org.kirikick.api.support.PostgresInstantTimeZoneTest'
+	}
+}
+
+tasks.named('check') {
+	dependsOn postgresInstantTimeZoneTest
+}
+
 tasks.named('bootRun') {
 	workingDir = rootProject.projectDir
 }
