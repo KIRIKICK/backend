@@ -40,10 +40,7 @@ public class UserProfileService {
     }
 
     return new UserProfile(
-        user.getUuid(),
-        user.getDisplayName(),
-        user.getProfileImageUrl(),
-        List.copyOf(linkedProviders));
+        user.getUuid(), user.getDisplayName(), user.getProfileImageUrl(), linkedProviders);
   }
 
   private RuntimeException unavailableIfRecognized(RuntimeException exception) {
@@ -55,5 +52,10 @@ public class UserProfileService {
   }
 
   public record UserProfile(
-      UUID uuid, String displayName, String profileImageUrl, List<OAuthProvider> linkedProviders) {}
+      UUID uuid, String displayName, String profileImageUrl, List<OAuthProvider> linkedProviders) {
+
+    public UserProfile {
+      linkedProviders = List.copyOf(linkedProviders);
+    }
+  }
 }
