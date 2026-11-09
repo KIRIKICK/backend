@@ -9,6 +9,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -17,6 +20,78 @@ import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.core.io.ByteArrayResource;
 
 class AuthPropertiesTest {
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(strings = {" ", "https://[invalid", "https://app.example/path", "file:///app"})
+  void rejectsMissingOrInvalidFrontendOrigins(String origin) {
+    AuthProperties settings = properties("test:auth", "test:session", origin);
+
+    assertThat(settings.isFeOriginValid()).isFalse();
+    try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+      assertThat(factory.getValidator().validate(settings)).isNotEmpty();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"https://app.example", "http://localhost:5173"})
+  void acceptsValidFrontendOrigins(String origin) {
+    assertThat(properties("test:auth", "test:session", origin).isFeOriginValid()).isTrue();
+  }
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(
+      strings = {
+        " ",
+        "https://[invalid",
+        "file:///app",
+        "https://user@app.example",
+        "https://app.example/#part"
+      })
+  void rejectsMissingOrInvalidKakaoEndpoints(String invalidEndpoint) {
+    try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+      for (int index = 0; index < 5; index++) {
+        String[] endpoints = {
+          "https://app.example/callback",
+          "https://kauth.kakao.com",
+          "https://kauth.kakao.com/oauth/authorize",
+          "https://kauth.kakao.com/oauth/token",
+          "https://kauth.kakao.com/.well-known/jwks.json"
+        };
+        endpoints[index] = invalidEndpoint;
+        var kakao =
+            new AuthProperties.Kakao(
+                "client",
+                "secret",
+                endpoints[0],
+                endpoints[1],
+                endpoints[2],
+                endpoints[3],
+                endpoints[4]);
+
+        assertThat(kakao.isEndpointsValid()).as("endpoint index %s", index).isFalse();
+        assertThat(factory.getValidator().validate(kakao))
+            .as("endpoint index %s", index)
+            .isNotEmpty();
+      }
+    }
+  }
+
+  @Test
+  void acceptsKakaoEndpointsWithPathsAndQueries() {
+    var kakao =
+        new AuthProperties.Kakao(
+            "client",
+            "secret",
+            "http://localhost/callback?source=app",
+            "https://kauth.kakao.com",
+            "https://kauth.kakao.com/oauth/authorize?scope=openid",
+            "https://kauth.kakao.com/oauth/token",
+            "https://kauth.kakao.com/.well-known/jwks.json");
+
+    assertThat(kakao.isEndpointsValid()).isTrue();
+  }
 
   @Test
   void rejectsMissingSigningAndProviderConfiguration() {

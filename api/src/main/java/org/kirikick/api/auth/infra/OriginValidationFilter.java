@@ -44,9 +44,13 @@ public final class OriginValidationFilter extends OncePerRequestFilter {
   }
 
   public static String canonicalOriginOrNull(String value) {
+    if (value == null) {
+      return null;
+    }
+
     try {
       return canonicalOrigin(value);
-    } catch (IllegalArgumentException | NullPointerException exception) {
+    } catch (IllegalArgumentException exception) {
       return null;
     }
   }
