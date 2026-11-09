@@ -1,5 +1,7 @@
 package org.kirikick.api.auth.oauth;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,9 +13,12 @@ import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.AuthenticationServiceException;
 
 class OAuthLoginFailureHandlerTest {
@@ -44,6 +49,49 @@ class OAuthLoginFailureHandlerTest {
         request, response, new AuthenticationServiceException("failed"));
 
     verify(session).invalidate();
+  }
+
+  @Test
+  void staleAlternateFrontendMarkerUsesTheSameLocationAsTheFailureRedirect() throws Exception {
+    RedisFlowClaimGuard guard = mock(RedisFlowClaimGuard.class);
+    Instant now = Instant.parse("2026-11-03T00:00:00Z");
+    String additionalOrigin = "https://additional.example";
+    OAuthLoginFailureHandler handler =
+        new OAuthLoginFailureHandler(
+            guard,
+            Clock.fixed(now, ZoneOffset.UTC),
+            new AuthFrontendPolicy("https://app.kirikick.example", List.of(additionalOrigin)));
+    HttpServletRequest request = mock(HttpServletRequest.class);
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    HttpSession session = mock(HttpSession.class);
+    OAuthFlowMetadata flow = flow(now);
+    UUID claimId = UUID.randomUUID();
+    matchedRequest(request, session, flow, claimId);
+    when(request.getAttribute(
+            OAuthFlowAuthorizationRequestRepository.class.getName() + ".matchedFrontendOrigin"))
+        .thenReturn(additionalOrigin);
+    when(request.getRequestedSessionId()).thenReturn(flow.sessionId());
+    when(guard.finishOAuth(
+            flow.slotId(),
+            flow.flowId(),
+            flow.expiresAt(),
+            claimId,
+            RedisFlowClaimGuard.OAuthFinish.END,
+            null,
+            null,
+            now))
+        .thenReturn(RedisFlowClaimGuard.FinishOAuthResult.STALE);
+
+    handler.onAuthenticationFailure(
+        request, response, new AuthenticationServiceException("failed"));
+
+    String expected = additionalOrigin + "/auth/kakao/callback?result=ERROR&errorCode=OAUTH_FAILED";
+    verify(response).setHeader("Location", expected);
+    ArgumentCaptor<Object> marker = ArgumentCaptor.forClass(Object.class);
+    verify(request).setAttribute(eq(OAuthStaleCompletion.class.getName()), marker.capture());
+    assertThat(marker.getValue()).isInstanceOf(OAuthStaleCompletion.Marker.class);
+    assertThat(((OAuthStaleCompletion.Marker) marker.getValue()).failureLocation())
+        .isEqualTo(expected);
   }
 
   @Test
@@ -79,7 +127,9 @@ class OAuthLoginFailureHandlerTest {
 
   private OAuthLoginFailureHandler handler(RedisFlowClaimGuard guard, Instant now) {
     return new OAuthLoginFailureHandler(
-        guard, Clock.fixed(now, ZoneOffset.UTC), "https://app.kirikick.example");
+        guard,
+        Clock.fixed(now, ZoneOffset.UTC),
+        new AuthFrontendPolicy("https://app.kirikick.example", List.of()));
   }
 
   private void matchedRequest(

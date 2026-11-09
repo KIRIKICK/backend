@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
 import org.kirikick.api.auth.infra.SessionStateUnavailableException;
 import org.kirikick.api.common.exception.DomainException;
@@ -36,6 +37,10 @@ public final class OAuthFlowAuthorizationRequestRepository
       OAuthFlowAuthorizationRequestRepository.class.getName() + ".flow";
   private static final String SLOT_ATTRIBUTE =
       OAuthFlowAuthorizationRequestRepository.class.getName() + ".slot";
+  private static final String FRONTEND_ORIGIN_ATTRIBUTE =
+      OAuthFlowAuthorizationRequestRepository.class.getName() + ".frontendOrigin";
+  private static final String MATCHED_FRONTEND_ORIGIN_ATTRIBUTE =
+      OAuthFlowAuthorizationRequestRepository.class.getName() + ".matchedFrontendOrigin";
   private static final Duration FLOW_TTL = Duration.ofMinutes(10);
 
   private final HttpSessionOAuth2AuthorizationRequestRepository delegate =
@@ -43,6 +48,7 @@ public final class OAuthFlowAuthorizationRequestRepository
 
   private final Clock clock;
   private final RedisFlowClaimGuard guard;
+  private final AuthFrontendPolicy frontendPolicy;
 
   @Override
   public OAuth2AuthorizationRequest loadAuthorizationRequest(HttpServletRequest request) {
@@ -60,6 +66,12 @@ public final class OAuthFlowAuthorizationRequestRepository
         || !flow.sessionId().equals(session.getId())) {
       return null;
     }
+
+    String frontendOrigin = frontendOrigin(authorizationRequest);
+    if (frontendOrigin == null) {
+      return null;
+    }
+    request.setAttribute(MATCHED_FRONTEND_ORIGIN_ATTRIBUTE, frontendOrigin);
 
     UUID claimId = UUID.randomUUID();
     RedisFlowClaimGuard.ClaimOAuthResult result =
@@ -90,6 +102,12 @@ public final class OAuthFlowAuthorizationRequestRepository
       return;
     }
 
+    String frontendOrigin = frontendPolicy.select(request.getParameterValues("frontend_origin"));
+    OAuth2AuthorizationRequest storedAuthorizationRequest =
+        OAuth2AuthorizationRequest.from(authorizationRequest)
+            .attributes(attributes -> attributes.put(FRONTEND_ORIGIN_ATTRIBUTE, frontendOrigin))
+            .build();
+
     HttpSession oldSession = request.getSession(false);
     UUID slotId = slot(oldSession);
     if (slotId == null) {
@@ -116,7 +134,7 @@ public final class OAuthFlowAuthorizationRequestRepository
               next.slotId(), next.flowId(), next.state(), next.expiresAt(), fresh.getId());
       fresh.setAttribute(SLOT_ATTRIBUTE, stored.slotId());
       fresh.setAttribute(FLOW_ATTRIBUTE, stored);
-      delegate.saveAuthorizationRequest(authorizationRequest, request, response);
+      delegate.saveAuthorizationRequest(storedAuthorizationRequest, request, response);
     } catch (DataAccessException exception) {
       throw new SessionStateUnavailableException(exception);
     }
@@ -148,6 +166,22 @@ public final class OAuthFlowAuthorizationRequestRepository
   public static UUID oauthClaimId(HttpServletRequest request) {
     Object value = request.getAttribute(OAUTH_CLAIM_ATTRIBUTE);
     return value instanceof UUID claimId ? claimId : null;
+  }
+
+  public static String matchedFrontendOrigin(HttpServletRequest request) {
+    Object value = request.getAttribute(MATCHED_FRONTEND_ORIGIN_ATTRIBUTE);
+    return value instanceof String origin ? origin : null;
+  }
+
+  private String frontendOrigin(OAuth2AuthorizationRequest authorizationRequest) {
+    if (!authorizationRequest.getAttributes().containsKey(FRONTEND_ORIGIN_ATTRIBUTE)) {
+      return frontendPolicy.defaultOrigin();
+    }
+    Object value = authorizationRequest.getAttributes().get(FRONTEND_ORIGIN_ATTRIBUTE);
+    if (!(value instanceof String origin) || !frontendPolicy.isAllowed(origin)) {
+      return null;
+    }
+    return origin;
   }
 
   public static OAuthFlowMetadata flow(HttpSession session) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -13,7 +14,8 @@ class OriginValidationFilterTest {
   @Test
   void acceptsOnlyTheExactNormalizedOriginForMutations() throws Exception {
     OriginValidationFilter filter =
-        new OriginValidationFilter("https://app.example", new ObjectMapper());
+        new OriginValidationFilter(
+            new AuthFrontendPolicy("https://app.example", List.of()), new ObjectMapper());
     MockHttpServletRequest accepted = new MockHttpServletRequest("POST", "/auth/refresh");
     accepted.addHeader("Origin", "https://APP.example:443");
     MockHttpServletResponse response = new MockHttpServletResponse();
@@ -47,7 +49,8 @@ class OriginValidationFilterTest {
   @Test
   void doesNotRequireOriginForSafeReads() throws Exception {
     OriginValidationFilter filter =
-        new OriginValidationFilter("https://app.example", new ObjectMapper());
+        new OriginValidationFilter(
+            new AuthFrontendPolicy("https://app.example", List.of()), new ObjectMapper());
     MockHttpServletResponse response = new MockHttpServletResponse();
     AtomicBoolean passed = new AtomicBoolean();
     filter.doFilter(

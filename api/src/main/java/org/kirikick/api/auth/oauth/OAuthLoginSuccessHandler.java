@@ -10,12 +10,14 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
 import org.kirikick.api.auth.infra.SessionStateUnavailableException;
 import org.kirikick.api.auth.onboarding.OnboardingSessionProofs;
@@ -34,6 +36,7 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 
 @Slf4j
+@RequiredArgsConstructor
 public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
   private static final String DB_UNAVAILABLE_LOG =
@@ -47,28 +50,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
   private final ObjectMapper objectMapper;
   private final RedisFlowClaimGuard guard;
   private final Clock clock;
-  private final String callback;
-
-  public OAuthLoginSuccessHandler(
-      OAuthIdentityRepository identities,
-      UserRepository users,
-      LoginSessionService logins,
-      SignupApplicationPublicationService publications,
-      AuthHttpSupport http,
-      ObjectMapper objectMapper,
-      RedisFlowClaimGuard guard,
-      Clock clock,
-      String feOrigin) {
-    this.identities = identities;
-    this.users = users;
-    this.logins = logins;
-    this.publications = publications;
-    this.http = http;
-    this.objectMapper = objectMapper;
-    this.guard = guard;
-    this.clock = clock;
-    this.callback = feOrigin + "/auth/kakao/callback";
-  }
+  private final AuthFrontendPolicy frontendPolicy;
 
   @Override
   public void onAuthenticationSuccess(
@@ -76,8 +58,11 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
       throws IOException {
     OAuthFlowMetadata flow = OAuthFlowAuthorizationRequestRepository.matchedFlow(request);
     UUID claimId = OAuthFlowAuthorizationRequestRepository.oauthClaimId(request);
+    String callback =
+        frontendPolicy.callback(
+            OAuthFlowAuthorizationRequestRepository.matchedFrontendOrigin(request));
     if (flow == null || claimId == null) {
-      redirect(response, "ERROR&errorCode=OAUTH_FAILED");
+      redirect(response, callback, "ERROR&errorCode=OAUTH_FAILED");
       return;
     }
 
@@ -93,7 +78,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
         throw exception;
       }
       try {
-        endOAuthFlowAndInvalidateSession(request, flow, claimId);
+        endOAuthFlowAndInvalidateSession(request, flow, claimId, callback);
       } catch (RuntimeException ignored) {
         // Keep the lookup failure response; Redis TTL bounds any unresolved claim.
       }
@@ -107,15 +92,15 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
       return;
     }
     if (identity.isPresent()) {
-      if (!endOAuthFlowAndInvalidateSession(request, flow, claimId)) {
-        redirect(response, "ERROR&errorCode=OAUTH_FAILED");
+      if (!endOAuthFlowAndInvalidateSession(request, flow, claimId, callback)) {
+        redirect(response, callback, "ERROR&errorCode=OAUTH_FAILED");
         return;
       }
       if (user == null || user.getStatus() != UserStatus.ACTIVE) {
-        redirect(response, "ERROR&errorCode=OAUTH_FAILED");
+        redirect(response, callback, "ERROR&errorCode=OAUTH_FAILED");
         return;
       }
-      publishLogin(response, user);
+      publishLogin(response, user, callback);
       return;
     }
 
@@ -134,13 +119,13 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
             issuedAt);
     if (finish != RedisFlowClaimGuard.FinishOAuthResult.PROOF_TRANSITION_PERMIT) {
       if (finish == RedisFlowClaimGuard.FinishOAuthResult.STALE) {
-        OAuthStaleCompletion.mark(request, flow, claimId, failureLocation());
+        OAuthStaleCompletion.mark(request, flow, claimId, failureLocation(callback));
       }
-      redirect(response, "ERROR&errorCode=OAUTH_FAILED");
+      redirect(response, callback, "ERROR&errorCode=OAUTH_FAILED");
       return;
     }
     if (!OAuthFlowAuthorizationRequestRepository.invalidateExactFlow(request, flow)) {
-      redirect(response, "ERROR&errorCode=OAUTH_FAILED");
+      redirect(response, callback, "ERROR&errorCode=OAUTH_FAILED");
       return;
     }
     HttpSession session = request.getSession(true);
@@ -177,7 +162,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
       }
       throw exception;
     }
-    redirect(response, "SIGNUP_REQUIRED");
+    redirect(response, callback, "SIGNUP_REQUIRED");
   }
 
   private void cleanupProof(
@@ -193,7 +178,7 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
   }
 
   private boolean endOAuthFlowAndInvalidateSession(
-      HttpServletRequest request, OAuthFlowMetadata flow, UUID claimId) {
+      HttpServletRequest request, OAuthFlowMetadata flow, UUID claimId, String callback) {
     RedisFlowClaimGuard.FinishOAuthResult finish =
         guard.finishOAuth(
             flow.slotId(),
@@ -206,18 +191,19 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
             clock.instant());
     if (finish != RedisFlowClaimGuard.FinishOAuthResult.END_CLEANUP_PERMIT) {
       if (finish == RedisFlowClaimGuard.FinishOAuthResult.STALE) {
-        OAuthStaleCompletion.mark(request, flow, claimId, failureLocation());
+        OAuthStaleCompletion.mark(request, flow, claimId, failureLocation(callback));
       }
       return false;
     }
     return OAuthFlowAuthorizationRequestRepository.invalidateExactFlow(request, flow);
   }
 
-  private void publishLogin(HttpServletResponse response, User user) throws IOException {
+  private void publishLogin(HttpServletResponse response, User user, String callback)
+      throws IOException {
     LoginGrant grant = logins.login(user);
     try {
       http.writeRefresh(response, grant);
-      redirect(response, "AUTHENTICATED");
+      redirect(response, callback, "AUTHENTICATED");
     } catch (IOException | RuntimeException exception) {
       try {
         logins.revoke(grant);
@@ -234,13 +220,14 @@ public final class OAuthLoginSuccessHandler implements AuthenticationSuccessHand
     }
   }
 
-  private void redirect(HttpServletResponse response, String result) throws IOException {
+  private void redirect(HttpServletResponse response, String callback, String result)
+      throws IOException {
     response.setStatus(HttpServletResponse.SC_SEE_OTHER);
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("Location", callback + "?result=" + result);
   }
 
-  private String failureLocation() {
+  private String failureLocation(String callback) {
     return callback + "?result=ERROR&errorCode=OAUTH_FAILED";
   }
 }
