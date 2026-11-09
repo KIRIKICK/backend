@@ -61,15 +61,22 @@ public class LoginSessionService {
   }
 
   public void authorize(Jwt token) {
+    if (token == null) {
+      throw new DomainException(AuthErrorCode.AUTHENTICATION_REQUIRED);
+    }
     UUID userUuid;
     String sessionId;
     try {
-      userUuid = UUID.fromString(token.getSubject());
-      sessionId = token.getClaimAsString("sid");
-      if (sessionId == null || sessionId.isBlank()) {
-        throw new IllegalArgumentException();
+      String subject = token.getSubject();
+      if (subject == null) {
+        throw new DomainException(AuthErrorCode.AUTHENTICATION_REQUIRED);
       }
-    } catch (IllegalArgumentException | NullPointerException exception) {
+      userUuid = UUID.fromString(subject);
+      sessionId = token.getClaimAsString("sid");
+    } catch (IllegalArgumentException exception) {
+      throw new DomainException(AuthErrorCode.AUTHENTICATION_REQUIRED);
+    }
+    if (sessionId == null || sessionId.isBlank()) {
       throw new DomainException(AuthErrorCode.AUTHENTICATION_REQUIRED);
     }
     LoginSession session =
