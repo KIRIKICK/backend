@@ -90,7 +90,7 @@ public class AuthSessionController {
           """
           Access Token 없이 호출할 수 있지만 유효한 Refresh Token 쿠키가 필요합니다.
           운영 환경은 __Host-refresh, local 환경은 dev-refresh 쿠키를 사용합니다.
-          Origin은 AUTH_FE_ORIGIN과 일치해야 하며, GET /auth/csrf 응답의 마스킹된 토큰을 X-XSRF-TOKEN 헤더로 전달해야 합니다.
+          Origin은 AUTH_FE_ORIGIN과 DEV 전용 AUTH_DEV_ADDITIONAL_FE_ORIGINS의 exact allowlist에 포함되어야 하며, GET /auth/csrf 응답의 마스킹된 토큰을 X-XSRF-TOKEN 헤더로 전달해야 합니다.
           성공 시 Refresh Token을 회전하고 새 쿠키와 Access Token을 반환합니다.
           소비한 정확한 Refresh Token을 재사용하면 해당 세션을 폐기합니다.
           브라우저는 credentials: include로 쿠키를 전달해야 합니다.

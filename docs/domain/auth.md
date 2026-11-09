@@ -21,10 +21,16 @@ temporary marker는 애플리케이션 namespace의 `temporary-slot:<opaque-slot
 
 카카오는 confidential client로 `client_secret_post`, `openid`, authorization-code flow와 PKCE(S256)를 사용한다. Spring Security가 authorization code 교환, `state`, `nonce`, OIDC 서명·issuer·audience 검증을 담당한다.
 
-- 연결된 User가 ACTIVE인 기존 OAuth 계정은 서비스 로그인 grant를 발급하고 `AUTHENTICATED`로 고정된 FE callback에 `303` 이동한다.
+- `AUTH_FE_ORIGIN`은 필수 기본 FE Origin이다. `AUTH_DEV_ADDITIONAL_FE_ORIGINS`는 쉼표로 구분한 DEV 전용 추가 Origin 목록이며, 비워 두면 기본 Origin만 허용한다. 추가 목록은 `dev`(선택적으로 `test`와 함께)에서만 허용하고 `local` 또는 `prod`가 활성화되면 기동을 거절한다. 이 검증은 lazy initialization 여부와 관계없이 기동 시 수행한다.
+- 허용 Origin은 scheme·host·port가 일치하는 HTTP(S) Origin만 사용한다. 경로(마지막 `/` 포함)·query·fragment·userinfo·wildcard는 허용하지 않으며, `localhost`와 `127.0.0.1`, 다른 scheme 또는 port는 서로 다르다. CORS와 unsafe 요청 Origin 검증은 같은 allowlist를 사용한다.
+- FE는 OAuth 시작 시 선택한 Origin을 `frontend_origin` query parameter로 명시할 수 있다. 값이 없으면 기본 FE Origin을 사용한다. 정확히 하나의 허용 Origin만 사용할 수 있으며, 빈 값·중복 값·전체 callback URL·미허용 값은 `400 OAUTH_FAILED`, `Cache-Control: no-store`, `Location` 없이 거절한다. 이 경우 기존 Session이나 OAuth flow를 변경하지 않는다. 유효한 selector로 시작한 뒤 일반 오류가 발생하면 선택한 FE의 `ERROR` callback으로 이동한다.
+- 검증된 선택 Origin은 OAuth authorization request와 같은 Spring Session payload에만 연결한다. provider redirect URI, OAuth `state`, callback query 또는 `Origin`·`Referer` 헤더로 출발 FE를 추론하거나 덮어쓰지 않는다. 카카오가 반환하는 BE redirect URI는 기존 `KAKAO_REDIRECT_URI`를 유지한다.
+- 연결된 User가 ACTIVE인 기존 OAuth 계정은 서비스 로그인 grant를 발급하고, 검증된 흐름에 연결된 FE callback에 `AUTHENTICATED`로 `303` 이동한다.
 - 연결된 User가 WITHDRAWN·SUSPENDED·BANNED인 기존 OAuth 계정은 grant나 proof 없이 `OAUTH_FAILED`로 이동한다.
-- 신규 subject는 temporary Session에 가입 proof를 저장한 뒤 같은 proof ID로 `SignupApplication`을 발행하고 `SIGNUP_REQUIRED`로 이동한다. 이 callback은 User를 생성하거나 서비스 인증을 발급하지 않는다.
-- 성공·실패 redirect에는 `Cache-Control: no-store`를 적용하며, URL에는 code, state, provider token, subject, proof, access/refresh token 또는 임의 return URL을 넣지 않는다.
+- 신규 subject는 temporary Session에 가입 proof를 저장한 뒤 같은 proof ID로 `SignupApplication`을 발행하고, 검증된 흐름에 연결된 FE callback에 `SIGNUP_REQUIRED`로 이동한다. 이 callback은 User를 생성하거나 서비스 인증을 발급하지 않는다.
+- provider 실패도 검증된 흐름의 FE callback에 고정된 `ERROR` 결과로 이동한다. state/session binding 또는 payload 문맥을 복원할 수 없으면 기본 FE의 `ERROR` callback을 사용한다. 반면, 유효하게 binding된 이전 배포 flow에 선택 Origin attribute만 없으면 기본 FE에 기존 정상 결과(`AUTHENTICATED`, `SIGNUP_REQUIRED`, provider `ERROR`)를 반환한다.
+- 저장된 선택 Origin이 잘못되었거나 현재 allowlist에서 제거되었으면 로그인 grant나 가입 proof를 발행하지 않고 기본 FE의 `ERROR` callback만 사용한다. 인증 상태 저장소 또는 DB 가용성 장애는 redirect로 바꾸지 않고 기존 `AUTH_STATE_UNAVAILABLE` 503 계약을 유지하며, 이 우선순위는 OAuth 시작 실패에도 적용한다.
+- 성공·실패 redirect에는 `Cache-Control: no-store`를 적용한다. callback 경로는 `/auth/kakao/callback`으로 고정하며 URL에는 code, state, provider token, subject, proof, access/refresh token 또는 임의 return URL을 넣지 않는다.
 
 ## Access JWT 서명 정책
 
@@ -77,6 +83,8 @@ OAuth/가입 temporary session은 HTTPS에서 `__Host-onboarding`, Secure, HttpO
 `AUTH_CROSS_SITE_COOKIES`의 기본값은 `false`다. `true`는 Vercel 기본 도메인과 Cloud Run `run.app`처럼 서로 다른 사이트에서 수행하는 **DEV 브라우저 검증 전용** opt-in이다. dev 프로필에서만 허용하며, local/prod 프로필 또는 `secure-cookies=false`와 함께 설정하면 기동을 거절한다. opt-in 시 onboarding·Refresh·CSRF 세 쿠키는 모두 `SameSite=None; Secure`가 된다. Origin·CSRF·OAuth state·PKCE·nonce·브라우저 binding·Refresh 재사용 탐지 정책은 변경하지 않는다.
 
 `SameSite=None; Secure`는 브라우저의 third-party-cookie 또는 anti-tracking 정책을 우회하지 않는다. 따라서 실제 브라우저 E2E 검증은 별도 rollout gate이며, 이 opt-in은 운영의 same-site/same-origin 권장을 대체하지 않는다.
+
+서로 다른 FE Origin은 같은 BE cookie jar를 공유할 수 있다. 독립 계정이나 독립 Refresh Session을 보장하지 않으며, 두 FE에서 Refresh를 동시에 요청하면 기존 replay 탐지가 세션을 폐기할 수 있다. 검증은 순차로 수행한다.
 
 운영은 HTTPS same-site FE/API 또는 same-origin reverse proxy를 기본으로 한다. 운영 cross-site cookie 허용은 이번 DEV opt-in 범위가 아니며 별도 security review가 필요하다.
 

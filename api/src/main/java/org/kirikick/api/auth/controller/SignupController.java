@@ -155,7 +155,7 @@ public class SignupController {
           """
           가입 신청·브라우저 증명·OAuth 신원이 모두 일치할 때만 회원을 생성합니다. Access Token은 필요하지 않습니다.
           GET /auth/signup/context에서 받은 signupApplicationId와 임시 세션 쿠키(운영 __Host-onboarding, local dev-onboarding)를 함께 전달합니다. onboarding 쿠키는 기본 SameSite=Lax이며, DEV cross-site opt-in에서는 SameSite=None; Secure를 사용합니다.
-          허용된 Origin(AUTH_FE_ORIGIN), CSRF 쿠키와 GET /auth/csrf에서 받은 X-XSRF-TOKEN 헤더가 필요합니다.
+          AUTH_FE_ORIGIN과 DEV 전용 AUTH_DEV_ADDITIONAL_FE_ORIGINS의 exact allowlist에 포함된 Origin, CSRF 쿠키와 GET /auth/csrf에서 받은 X-XSRF-TOKEN 헤더가 필요합니다.
           브라우저 요청에는 credentials: include를 사용해야 합니다.
           성공하면 Access Token을 본문으로, Refresh Token을 HttpOnly 쿠키로 발급하고 임시 가입 세션을 종료합니다.
           이미 완료된 신청은 토큰을 재발급하지 않습니다. 응답 유실 시 새 OAuth 로그인으로 다시 시작해야 합니다.
