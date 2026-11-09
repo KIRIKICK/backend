@@ -2,6 +2,7 @@ package org.kirikick.api.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -9,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.auth.controller.dto.CsrfResponse;
 import org.kirikick.api.auth.controller.dto.TokenResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
@@ -33,6 +36,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @ActiveProfiles({"test", "dev"})
 class DevCrossSiteCookieIntegrationTest {
   private static final String FE_ORIGIN = "https://frontend.example";
+  private static final String ADDITIONAL_FE_ORIGIN = "http://localhost:5173";
 
   @Autowired private MockMvc mvc;
   @Autowired private ObjectMapper json;
@@ -49,6 +53,7 @@ class DevCrossSiteCookieIntegrationTest {
     registry.add("auth.secure-cookies", () -> true);
     registry.add("auth.cross-site-cookies", () -> true);
     registry.add("auth.fe-origin", () -> FE_ORIGIN);
+    registry.add("auth.dev-additional-fe-origins", () -> ADDITIONAL_FE_ORIGIN);
     String database = "jdbc:h2:mem:cross-site-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
     registry.add("spring.datasource.url", () -> database);
     registry.add("spring.datasource.username", () -> "sa");
@@ -65,6 +70,43 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @Test
+  void additionalDevOriginCanReadTheCsrfEndpoint() throws Exception {
+    mvc.perform(get("/auth/csrf").secure(true).header(HttpHeaders.ORIGIN, ADDITIONAL_FE_ORIGIN))
+        .andExpect(status().isOk())
+        .andExpect(result ->
+            assertThat(result.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
+                .isEqualTo(ADDITIONAL_FE_ORIGIN));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {FE_ORIGIN, ADDITIONAL_FE_ORIGIN})
+  void allowedDevOriginsPassCorsPreflight(String origin) throws Exception {
+    mvc.perform(
+            options("/auth/refresh")
+                .secure(true)
+                .header(HttpHeaders.ORIGIN, origin)
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type, X-XSRF-TOKEN"))
+        .andExpect(status().isOk())
+        .andExpect(result ->
+            assertThat(result.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
+                .isEqualTo(origin));
+  }
+
+  @Test
+  void aliasOriginIsRejectedByCorsPreflight() throws Exception {
+    mvc.perform(
+            options("/auth/refresh")
+                .secure(true)
+                .header(HttpHeaders.ORIGIN, FE_ORIGIN + ".attacker.example")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST"))
+        .andExpect(status().isForbidden())
+        .andExpect(result ->
+            assertThat(result.getResponse().getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
+                .isNull());
+  }
+
+  @Test
   void onboardingCookieUsesNoneAndSecureWhileKeepingPkceStateAndNonce() throws Exception {
     MvcResult result =
         mvc.perform(get("/oauth2/authorization/kakao").secure(true))
@@ -75,8 +117,9 @@ class DevCrossSiteCookieIntegrationTest {
         .contains("code_challenge_method=S256", "code_challenge=", "state=", "nonce=");
   }
 
-  @Test
-  void optInPreservesOriginCsrfAndRefreshReuseChecks() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {FE_ORIGIN, ADDITIONAL_FE_ORIGIN})
+  void allowedDevOriginsPreserveCsrfAndRefreshReuseChecks(String origin) throws Exception {
     LoginGrant initial = logins.login(users.saveAndFlush(User.create("쿠키검증", null)));
     MvcResult csrf =
         mvc.perform(get("/auth/csrf").secure(true)).andExpect(status().isOk()).andReturn();
@@ -88,16 +131,16 @@ class DevCrossSiteCookieIntegrationTest {
             post("/auth/refresh")
                 .secure(true)
                 .cookie(new Cookie("__Host-refresh", initial.refreshToken()))
-                .header(HttpHeaders.ORIGIN, FE_ORIGIN))
+                .header(HttpHeaders.ORIGIN, origin))
         .andExpect(status().isForbidden());
-    refresh(initial.refreshToken(), csrfCookie, "invalid", FE_ORIGIN)
+    refresh(initial.refreshToken(), csrfCookie, "invalid", origin)
         .andExpect(status().isForbidden());
     refresh(initial.refreshToken(), csrfCookie, token, null).andExpect(status().isForbidden());
     refresh(initial.refreshToken(), csrfCookie, token, FE_ORIGIN + ".attacker.example")
         .andExpect(status().isForbidden());
 
     MvcResult refreshed =
-        refresh(initial.refreshToken(), csrfCookie, token, FE_ORIGIN)
+        refresh(initial.refreshToken(), csrfCookie, token, origin)
             .andExpect(status().isOk())
             .andReturn();
     Cookie successor = refreshed.getResponse().getCookie("__Host-refresh");
@@ -110,10 +153,8 @@ class DevCrossSiteCookieIntegrationTest {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + response.accessToken()))
         .andExpect(status().isOk());
 
-    refresh(initial.refreshToken(), csrfCookie, token, FE_ORIGIN)
-        .andExpect(status().isUnauthorized());
-    refresh(successor.getValue(), csrfCookie, token, FE_ORIGIN)
-        .andExpect(status().isUnauthorized());
+    refresh(initial.refreshToken(), csrfCookie, token, origin).andExpect(status().isUnauthorized());
+    refresh(successor.getValue(), csrfCookie, token, origin).andExpect(status().isUnauthorized());
     mvc.perform(
             get("/users/me/profile")
                 .secure(true)

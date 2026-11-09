@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.kirikick.api.auth.controller.dto.CsrfResponse;
 import org.kirikick.api.auth.controller.dto.TokenResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/auth")
 @Tag(name = "인증 세션", description = "CSRF 토큰 조회와 Refresh Token을 이용한 Access Token 재발급")
@@ -35,11 +37,6 @@ public class AuthSessionController {
 
   private final LoginSessionService sessions;
   private final AuthHttpSupport http;
-
-  public AuthSessionController(LoginSessionService sessions, AuthHttpSupport http) {
-    this.sessions = sessions;
-    this.http = http;
-  }
 
   @Operation(
       summary = "CSRF 토큰 조회",
@@ -90,7 +87,7 @@ public class AuthSessionController {
           """
           Access Token 없이 호출할 수 있지만 유효한 Refresh Token 쿠키가 필요합니다.
           운영 환경은 __Host-refresh, local 환경은 dev-refresh 쿠키를 사용합니다.
-          Origin은 AUTH_FE_ORIGIN과 일치해야 하며, GET /auth/csrf 응답의 마스킹된 토큰을 X-XSRF-TOKEN 헤더로 전달해야 합니다.
+          Origin은 AUTH_FE_ORIGIN과 DEV 전용 AUTH_DEV_ADDITIONAL_FE_ORIGINS의 exact allowlist에 포함되어야 하며, GET /auth/csrf 응답의 마스킹된 토큰을 X-XSRF-TOKEN 헤더로 전달해야 합니다.
           성공 시 Refresh Token을 회전하고 새 쿠키와 Access Token을 반환합니다.
           소비한 정확한 Refresh Token을 재사용하면 해당 세션을 폐기합니다.
           브라우저는 credentials: include로 쿠키를 전달해야 합니다.

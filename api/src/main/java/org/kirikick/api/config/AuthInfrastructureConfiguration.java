@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.JwtTokenService;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
 import org.kirikick.api.auth.infra.RedisRefreshSessionStore;
@@ -60,8 +61,20 @@ public class AuthInfrastructureConfiguration {
 
   @Bean
   AuthorizationRequestRepository<OAuth2AuthorizationRequest> oauthAuthorizationRequestRepository(
-      Clock clock, RedisFlowClaimGuard claims) {
-    return new OAuthFlowAuthorizationRequestRepository(clock, claims);
+      Clock clock, RedisFlowClaimGuard claims, AuthFrontendPolicy frontendPolicy) {
+    return new OAuthFlowAuthorizationRequestRepository(clock, claims, frontendPolicy);
+  }
+
+  /** Rejects a DEV-only allowlist before a lazy application can accept browser traffic. */
+  @Bean
+  @Lazy(false)
+  AuthFrontendPolicy authFrontendPolicy(AuthProperties properties, Environment environment) {
+    if (!properties.devAdditionalFeOrigins().isEmpty()
+        && (!environment.acceptsProfiles(Profiles.of("dev"))
+            || environment.acceptsProfiles(Profiles.of("local", "prod")))) {
+      throw new IllegalStateException("추가 FE Origin은 dev 프로필에서만 사용할 수 있습니다.");
+    }
+    return new AuthFrontendPolicy(properties.feOrigin(), properties.devAdditionalFeOrigins());
   }
 
   @Bean

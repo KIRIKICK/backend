@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,7 @@ import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.LoginSession;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
 import org.kirikick.api.auth.infra.SessionStateUnavailableException;
 import org.kirikick.api.auth.repository.OAuthIdentityRepository;
@@ -242,7 +244,7 @@ class OAuthLoginSuccessHandlerTest {
             new ObjectMapper(),
             guard,
             Clock.fixed(now, ZoneOffset.UTC),
-            "https://app.kirikick.example");
+            new AuthFrontendPolicy("https://app.kirikick.example", List.of()));
 
     private Fixture() {
       when(authentication.getPrincipal()).thenReturn(principal);

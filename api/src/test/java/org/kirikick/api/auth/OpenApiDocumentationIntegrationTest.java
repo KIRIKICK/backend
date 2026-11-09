@@ -254,7 +254,8 @@ class OpenApiDocumentationIntegrationTest {
           .contains("no-store");
     }
     assertThat(signup.path("description").asText())
-        .contains("AUTH_FE_ORIGIN", "X-XSRF-TOKEN", "토큰을 재발급하지 않습니다");
+        .contains(
+            "AUTH_FE_ORIGIN", "AUTH_DEV_ADDITIONAL_FE_ORIGINS", "X-XSRF-TOKEN", "토큰을 재발급하지 않습니다");
     assertThat(signup.path("parameters").findValuesAsText("name")).containsExactly("X-XSRF-TOKEN");
     assertThat(signup.at("/parameters/0/in").asText()).isEqualTo("header");
     assertThat(signup.at("/parameters/0/required").asBoolean()).isTrue();

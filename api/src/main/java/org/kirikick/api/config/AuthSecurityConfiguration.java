@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.time.Clock;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.JwtTokenService;
 import org.kirikick.api.auth.infra.OriginValidationFilter;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
@@ -69,7 +70,7 @@ public class AuthSecurityConfiguration {
       ObjectMapper objectMapper,
       RedisFlowClaimGuard guard,
       Clock clock,
-      AuthProperties properties) {
+      AuthFrontendPolicy frontendPolicy) {
     return new OAuthLoginSuccessHandler(
         identities,
         users,
@@ -79,17 +80,17 @@ public class AuthSecurityConfiguration {
         objectMapper,
         guard,
         clock,
-        properties.feOrigin());
+        frontendPolicy);
   }
 
   @Bean
   OAuthLoginFailureHandler oauthLoginFailureHandler(
-      RedisFlowClaimGuard guard, Clock clock, AuthProperties properties) {
-    return new OAuthLoginFailureHandler(guard, clock, properties.feOrigin());
+      RedisFlowClaimGuard guard, Clock clock, AuthFrontendPolicy frontendPolicy) {
+    return new OAuthLoginFailureHandler(guard, clock, frontendPolicy);
   }
 
   private static ObjectPostProcessor<OAuth2AuthorizationRequestRedirectFilter>
-      oauthStartFailurePostProcessor(AuthProperties properties) {
+      oauthStartFailurePostProcessor(AuthFrontendPolicy frontendPolicy, ObjectMapper objectMapper) {
     return new ObjectPostProcessor<>() {
       @Override
       public <O extends OAuth2AuthorizationRequestRedirectFilter> O postProcess(O filter) {
@@ -101,11 +102,18 @@ public class AuthSecurityConfiguration {
             }
             cause = cause.getCause();
           }
+          String callback;
+          try {
+            callback =
+                frontendPolicy.callback(
+                    frontendPolicy.select(request.getParameterValues("frontend_origin")));
+          } catch (IllegalArgumentException exception) {
+            writeError(response, objectMapper, HttpStatus.BAD_REQUEST, AuthErrorCode.OAUTH_FAILED);
+            return;
+          }
           response.setStatus(HttpServletResponse.SC_SEE_OTHER);
           response.setHeader("Cache-Control", "no-store");
-          response.setHeader(
-              "Location",
-              properties.feOrigin() + "/auth/kakao/callback?result=ERROR&errorCode=OAUTH_FAILED");
+          response.setHeader("Location", callback + "?result=ERROR&errorCode=OAUTH_FAILED");
         });
         return filter;
       }
@@ -118,6 +126,7 @@ public class AuthSecurityConfiguration {
       JwtDecoder jwtDecoder,
       LoginSessionService sessions,
       AuthProperties properties,
+      AuthFrontendPolicy frontendPolicy,
       Environment environment,
       AuthorizationRequestRepository<OAuth2AuthorizationRequest>
           oauthAuthorizationRequestRepository,
@@ -145,14 +154,11 @@ public class AuthSecurityConfiguration {
         new CorsConfiguration() {
           @Override
           public String checkOrigin(String requestOrigin) {
-            String actual = OriginValidationFilter.canonicalOriginOrNull(requestOrigin);
-            return OriginValidationFilter.canonicalOrigin(properties.feOrigin()).equals(actual)
-                ? requestOrigin
-                : null;
+            return frontendPolicy.isAllowed(requestOrigin) ? requestOrigin : null;
           }
         };
     cors.setAllowCredentials(true);
-    cors.addAllowedOrigin(properties.feOrigin());
+    frontendPolicy.allowedOrigins().forEach(cors::addAllowedOrigin);
     cors.addAllowedHeader("Content-Type");
     cors.addAllowedHeader("X-XSRF-TOKEN");
     cors.addAllowedHeader("Authorization");
@@ -199,7 +205,8 @@ public class AuthSecurityConfiguration {
                 .jwt(jwt -> jwt.decoder(jwtDecoder)))
         .oauth2Login(oauth ->
             oauth
-                .withObjectPostProcessor(oauthStartFailurePostProcessor(properties))
+                .withObjectPostProcessor(
+                    oauthStartFailurePostProcessor(frontendPolicy, objectMapper))
                 .authorizedClientRepository(new NoopOAuth2AuthorizedClientRepository())
                 .authorizationEndpoint(endpoint ->
                     endpoint
@@ -232,7 +239,7 @@ public class AuthSecurityConfiguration {
                         HttpStatus.FORBIDDEN,
                         AuthErrorCode.AUTHENTICATION_REQUIRED)))
         .addFilterBefore(
-            new OriginValidationFilter(properties.feOrigin(), objectMapper),
+            new OriginValidationFilter(frontendPolicy, objectMapper),
             UsernamePasswordAuthenticationFilter.class)
         .addFilterAfter(
             new SessionAuthorizationFilter(sessions, objectMapper),

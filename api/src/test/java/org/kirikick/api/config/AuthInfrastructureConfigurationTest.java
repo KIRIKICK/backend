@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
@@ -25,7 +26,8 @@ class AuthInfrastructureConfigurationTest {
             "https://kauth.kakao.com/oauth/authorize",
             "https://kauth.kakao.com/oauth/token",
             "https://kauth.kakao.com/.well-known/jwks.json");
-    AuthProperties properties = new AuthProperties(null, null, null, false, false, null, kakao);
+    AuthProperties properties =
+        new AuthProperties(null, null, null, List.of(), false, false, null, kakao);
     AuthInfrastructureConfiguration configuration = new AuthInfrastructureConfiguration();
     ClientRegistrationRepository registrations =
         configuration.clientRegistrationRepository(properties);

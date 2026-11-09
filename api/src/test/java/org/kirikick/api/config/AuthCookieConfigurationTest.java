@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.RedisRefreshSessionStore;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
@@ -55,6 +56,81 @@ class AuthCookieConfigurationTest {
         .run(context -> {
           assertThat(context).hasNotFailed();
           assertThat(context.getBean(AuthProperties.class).crossSiteCookies()).isEqualTo(enabled);
+        });
+  }
+
+  @Test
+  void defaultsToOnlyTheRequiredOriginWhenAdditionalOriginsAreUnset() {
+    lazyConfiguration("dev,test", Map.of())
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          AuthFrontendPolicy policy = context.getBean(AuthFrontendPolicy.class);
+          assertThat(policy.allowedOrigins()).containsExactly("https://app.example");
+        });
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"local", "dev", "prod"})
+  void keepsTheDefaultOnlyPolicyForExistingDeploymentProfiles(String profile) {
+    lazyConfiguration(profile, Map.of())
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context.getBean(AuthFrontendPolicy.class).allowedOrigins())
+              .containsExactly("https://app.example");
+        });
+  }
+
+  @Test
+  void treatsAnEmptyAdditionalOriginEnvironmentVariableAsNoAdditionalOrigins() {
+    lazyConfiguration("dev,test", Map.of("AUTH_DEV_ADDITIONAL_FE_ORIGINS", ""))
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context.getBean(AuthFrontendPolicy.class).allowedOrigins())
+              .containsExactly("https://app.example");
+        });
+  }
+
+  @Test
+  void bindsAndCanonicalizesAdditionalOriginsFromAnOperatingSystemEnvironmentVariable() {
+    lazyConfiguration(
+            "dev,test",
+            Map.of(
+                "AUTH_DEV_ADDITIONAL_FE_ORIGINS",
+                "https://app.example:443,https://LOCALHOST:443,http://localhost:5173"))
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context.getBean(AuthFrontendPolicy.class).allowedOrigins())
+              .containsExactlyInAnyOrder(
+                  "https://app.example", "https://localhost", "http://localhost:5173");
+        });
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "https://app.example/",
+        "https://user@app.example",
+        "https://app.example?query=true",
+        "https://app.example#fragment",
+        "https://app.example/path",
+        "https://app.example:65536",
+        "https://app.example\r\ninvalid",
+        "https://*.example",
+        "file:///app"
+      })
+  void rejectsAnInvalidDevAdditionalOriginAtStartup(String origin) {
+    lazyConfiguration("dev", Map.of("AUTH_DEV_ADDITIONAL_FE_ORIGINS", origin))
+        .run(context -> assertThat(context).hasFailed());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"local", "prod", "test", "dev,prod", "dev,local"})
+  void rejectsAdditionalOriginsOutsideAnExclusivelyDevDeployment(String profiles) {
+    lazyConfiguration(profiles, Map.of("AUTH_DEV_ADDITIONAL_FE_ORIGINS", "http://localhost:5173"))
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("추가 FE Origin은 dev 프로필에서만 사용할 수 있습니다.");
         });
   }
 
