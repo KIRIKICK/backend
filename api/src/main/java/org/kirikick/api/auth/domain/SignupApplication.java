@@ -1,5 +1,6 @@
 package org.kirikick.api.auth.domain;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -45,6 +46,9 @@ public class SignupApplication extends BaseTimeEntity {
   @Column(name = "completed_at")
   private Instant completedAt;
 
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification = "Private constructor validates domain invariants.")
   private SignupApplication(
       UUID id, OAuthProvider provider, String providerSubject, Instant issuedAt) {
     if (id == null
