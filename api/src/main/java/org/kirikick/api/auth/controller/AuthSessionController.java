@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.kirikick.api.auth.controller.dto.CsrfResponse;
 import org.kirikick.api.auth.controller.dto.TokenResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/auth")
 @Tag(name = "인증 세션", description = "CSRF 토큰 조회와 Refresh Token을 이용한 Access Token 재발급")
@@ -35,11 +37,6 @@ public class AuthSessionController {
 
   private final LoginSessionService sessions;
   private final AuthHttpSupport http;
-
-  public AuthSessionController(LoginSessionService sessions, AuthHttpSupport http) {
-    this.sessions = sessions;
-    this.http = http;
-  }
 
   @Operation(
       summary = "CSRF 토큰 조회",
