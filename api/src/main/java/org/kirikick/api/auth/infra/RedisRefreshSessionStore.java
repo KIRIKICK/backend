@@ -1,5 +1,6 @@
 package org.kirikick.api.auth.infra;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -78,6 +79,9 @@ public final class RedisRefreshSessionStore {
   private final String namespace;
   private final Clock clock;
 
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "The Spring-managed Redis template is intentionally shared.")
   public RedisRefreshSessionStore(StringRedisTemplate redis, String namespace, Clock clock) {
     this.redis = redis;
     this.namespace = normalizeNamespace(namespace);

@@ -3,6 +3,7 @@ package org.kirikick.api.auth.infra;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
@@ -85,6 +86,9 @@ public final class JwtTokenService {
     return decoder.decode(token);
   }
 
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "The decoder is deliberately shared with Spring Security.")
   public JwtDecoder decoder() {
     return decoder;
   }
