@@ -1,6 +1,7 @@
 package org.kirikick.api.auth.infra;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,6 +23,9 @@ public final class SessionAuthorizationFilter extends OncePerRequestFilter {
   private final LoginSessionService sessions;
   private final ObjectMapper objectMapper;
 
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "The Spring-managed ObjectMapper is intentionally shared.")
   public SessionAuthorizationFilter(LoginSessionService sessions, ObjectMapper objectMapper) {
     this.sessions = sessions;
     this.objectMapper = objectMapper;

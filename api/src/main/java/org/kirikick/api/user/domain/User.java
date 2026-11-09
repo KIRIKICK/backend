@@ -1,5 +1,6 @@
 package org.kirikick.api.user.domain;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -51,6 +52,9 @@ public class User extends BaseTimeEntity {
   @Column(name = "withdrawn_at")
   private Instant withdrawnAt;
 
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification = "Private constructor validates domain invariants.")
   private User(String displayName, String profileImageUrl) {
     validateDisplayName(displayName);
 

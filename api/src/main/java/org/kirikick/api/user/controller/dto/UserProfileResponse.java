@@ -27,4 +27,9 @@ public record UserProfileResponse(
                 @Schema(
                     type = "string",
                     allowableValues = {"kakao", "apple"}))
-        List<String> linkedProviders) {}
+        List<String> linkedProviders) {
+
+  public UserProfileResponse {
+    linkedProviders = List.copyOf(linkedProviders);
+  }
+}

@@ -45,6 +45,9 @@ public record AuthProperties(
 
   @AssertTrue(message = "FE 주소는 경로·인증정보·쿼리가 없는 HTTP(S) origin이어야 합니다.")
   public boolean isFeOriginValid() {
+    if (feOrigin == null) {
+      return false;
+    }
     try {
       URI uri = URI.create(feOrigin);
       return isHttp(uri)
@@ -53,7 +56,7 @@ public record AuthProperties(
           && uri.getRawQuery() == null
           && uri.getRawFragment() == null
           && (uri.getRawPath() == null || uri.getRawPath().isEmpty());
-    } catch (IllegalArgumentException | NullPointerException exception) {
+    } catch (IllegalArgumentException exception) {
       return false;
     }
   }
@@ -82,6 +85,9 @@ public record AuthProperties(
       try {
         for (String endpoint :
             new String[] {redirectUri, issuerUri, authorizationUri, tokenUri, jwkSetUri}) {
+          if (endpoint == null) {
+            return false;
+          }
           URI uri = URI.create(endpoint);
           if (!isHttp(uri)
               || uri.getHost() == null
@@ -91,7 +97,7 @@ public record AuthProperties(
           }
         }
         return true;
-      } catch (IllegalArgumentException | NullPointerException exception) {
+      } catch (IllegalArgumentException exception) {
         return false;
       }
     }

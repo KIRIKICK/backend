@@ -18,15 +18,20 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.auth.domain.LoginSession;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.security.oauth2.jwt.JwtValidationException;
 
 class JwtTokenServiceTest {
   private static final Instant NOW = Instant.parse("2026-11-03T00:00:00Z");
@@ -95,6 +100,68 @@ class JwtTokenServiceTest {
 
     JwtDecoder decoder = service(NOW, "https://api.example", "kirikick").decoder();
     assertThatThrownBy(() -> decoder.decode(raw)).isInstanceOf(JwtException.class);
+  }
+
+  @ParameterizedTest(name = "claim={0}, value={1}")
+  @MethodSource("invalidRequiredClaims")
+  void rejectsInvalidRequiredClaims(String claimName, Object claimValue) throws Exception {
+    String raw = signedClaim(claimName, claimValue);
+    var service = service(NOW, "https://api.example", "kirikick");
+
+    assertThatThrownBy(() -> service.decode(raw)).isInstanceOf(JwtException.class);
+    assertThatThrownBy(() -> service.decoder().decode(raw)).isInstanceOf(JwtException.class);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"sub", "sid", "aud"})
+  void reportsMissingIdentityClaimsAsInvalidToken(String missingClaim) throws Exception {
+    String raw = signedClaim(missingClaim, null);
+    var service = service(NOW, "https://api.example", "kirikick");
+
+    for (JwtDecoder decoder : List.<JwtDecoder>of(service::decode, service.decoder())) {
+      assertThatThrownBy(() -> decoder.decode(raw))
+          .isInstanceOfSatisfying(
+              JwtValidationException.class,
+              exception ->
+                  assertThat(exception.getErrors())
+                      .anyMatch(error -> "invalid_token".equals(error.getErrorCode())));
+    }
+  }
+
+  private String signedClaim(String claimName, Object claimValue) throws Exception {
+    var claims =
+        new JWTClaimsSet.Builder()
+            .issuer("https://api.example")
+            .audience("kirikick")
+            .subject(session().userUuid().toString())
+            .claim("sid", session().id())
+            .issueTime(Date.from(NOW))
+            .expirationTime(Date.from(NOW.plusSeconds(900)))
+            .claim(claimName, claimValue)
+            .build();
+    var token =
+        new SignedJWT(
+            new JWSHeader.Builder(JWSAlgorithm.RS256).type(JOSEObjectType.JWT).build(), claims);
+    token.sign(new RSASSASigner((RSAPrivateKey) keys.getPrivate()));
+    return token.serialize();
+  }
+
+  private static Stream<Arguments> invalidRequiredClaims() {
+    return Stream.of(
+        Arguments.of("sub", null),
+        Arguments.of("sub", "not-a-uuid"),
+        Arguments.of("sub", List.of("not-a-subject")),
+        Arguments.of("sid", null),
+        Arguments.of("sid", ""),
+        Arguments.of("sid", "invalid sid"),
+        Arguments.of("sid", List.of("invalid-sid")),
+        Arguments.of("aud", null),
+        Arguments.of("aud", List.of("other-audience")),
+        Arguments.of("aud", 123),
+        Arguments.of("iat", null),
+        Arguments.of("iat", "not-a-timestamp"),
+        Arguments.of("exp", null),
+        Arguments.of("exp", "not-a-timestamp"));
   }
 
   @ParameterizedTest(name = "iatOffsetSeconds={0}, expOffsetSeconds={1}")

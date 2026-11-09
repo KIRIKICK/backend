@@ -1,5 +1,6 @@
 package org.kirikick.api.config;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.interfaces.RSAPrivateKey;
@@ -114,6 +115,9 @@ public class AuthInfrastructureConfiguration {
   }
 
   @Bean
+  @SuppressFBWarnings(
+      value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE",
+      justification = "Spring Security 6.5.11 RSA key converters return a key or throw.")
   JwtTokenService jwtTokenService(AuthProperties properties, Clock clock) throws IOException {
     try (InputStream privatePem = properties.jwt().privateKeyLocation().getInputStream();
         InputStream publicPem = properties.jwt().publicKeyLocation().getInputStream()) {

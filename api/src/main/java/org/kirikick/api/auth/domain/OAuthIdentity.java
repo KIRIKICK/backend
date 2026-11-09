@@ -1,5 +1,6 @@
 package org.kirikick.api.auth.domain;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -51,6 +52,9 @@ public class OAuthIdentity extends BaseCreatedTimeEntity {
       length = PROVIDER_SUBJECT_MAX_LENGTH)
   private String providerSubject;
 
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification = "Private constructor validates domain invariants.")
   private OAuthIdentity(Long userId, OAuthProvider provider, String providerSubject) {
     if (userId == null || userId <= 0) {
       throw new DomainException(AuthErrorCode.INVALID_USER_ID);

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.Level;
@@ -321,6 +322,50 @@ class LoginSessionServiceTest {
       logger.detachAppender(appender);
       appender.stop();
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "null-token",
+        "missing-subject",
+        "invalid-subject",
+        "missing-sid",
+        "blank-sid",
+        "invalid-sid-type"
+      })
+  void authorizeRejectsInvalidClaimsWithoutAccessingSessionOrMember(String invalidCase) {
+    Fixture fixture = fixture();
+    Jwt token = "null-token".equals(invalidCase) ? null : mock(Jwt.class);
+    if (token != null) {
+      String subject =
+          switch (invalidCase) {
+            case "missing-subject" -> null;
+            case "invalid-subject" -> "not-a-uuid";
+            default -> fixture.uuid().toString();
+          };
+      when(token.getSubject()).thenReturn(subject);
+      if ("invalid-sid-type".equals(invalidCase)) {
+        when(token.getClaimAsString("sid")).thenThrow(new IllegalArgumentException("invalid sid"));
+      } else {
+        when(token.getClaimAsString("sid"))
+            .thenReturn("missing-sid".equals(invalidCase) ? null : " ");
+      }
+    }
+
+    assertCode(() -> fixture.service().authorize(token), AuthErrorCode.AUTHENTICATION_REQUIRED);
+    verifyNoInteractions(fixture.sessions(), fixture.users(), fixture.jwt());
+  }
+
+  @Test
+  void authorizeDoesNotHideUnexpectedNullPointerExceptions() {
+    Fixture fixture = fixture();
+    Jwt token = mock(Jwt.class);
+    NullPointerException failure = new NullPointerException("unexpected failure");
+    when(token.getSubject()).thenThrow(failure);
+
+    assertThatThrownBy(() -> fixture.service().authorize(token)).isSameAs(failure);
+    verifyNoInteractions(fixture.sessions(), fixture.users(), fixture.jwt());
   }
 
   @Test

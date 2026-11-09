@@ -3,6 +3,7 @@ package org.kirikick.api.auth.infra;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
@@ -85,26 +86,37 @@ public final class JwtTokenService {
     return decoder.decode(token);
   }
 
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "The decoder is deliberately shared with Spring Security.")
   public JwtDecoder decoder() {
     return decoder;
   }
 
   private OAuth2TokenValidatorResult validateClaims(Jwt token) {
     try {
-      UUID.fromString(token.getSubject());
-      String sid = token.getClaimAsString("sid");
-      Instant now = clock.instant();
-      if (sid != null
-          && sid.matches("[A-Za-z0-9_-]{1,128}")
-          && token.getAudience().contains(audience)
-          && token.getIssuedAt() != null
-          && token.getExpiresAt() != null
-          && !token.getIssuedAt().isAfter(now)
-          && token.getExpiresAt().isAfter(token.getIssuedAt())
-          && token.getExpiresAt().isAfter(now)) {
-        return OAuth2TokenValidatorResult.success();
+      String subject = token.getSubject();
+      if (subject != null) {
+        UUID.fromString(subject);
+        String sid = token.getClaimAsString("sid");
+        List<String> audiences = token.getAudience();
+        Instant now = clock.instant();
+        if (sid != null
+            && sid.matches("[A-Za-z0-9_-]{1,128}")
+            && audiences != null
+            && audiences.contains(audience)) {
+          Instant issuedAt = token.getIssuedAt();
+          Instant expiresAt = token.getExpiresAt();
+          if (issuedAt != null
+              && expiresAt != null
+              && !issuedAt.isAfter(now)
+              && expiresAt.isAfter(issuedAt)
+              && expiresAt.isAfter(now)) {
+            return OAuth2TokenValidatorResult.success();
+          }
+        }
       }
-    } catch (IllegalArgumentException | NullPointerException exception) {
+    } catch (IllegalArgumentException exception) {
       // Invalid claims are authentication failures, not parser details for the caller.
     }
     return OAuth2TokenValidatorResult.failure(
