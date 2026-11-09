@@ -30,6 +30,7 @@ auth:
   redis-namespace: ${REDIS_NAMESPACE}:auth
   session-redis-namespace: ${REDIS_NAMESPACE}:spring:session
   fe-origin: ${AUTH_FE_ORIGIN}
+  dev-additional-fe-origins: ${AUTH_DEV_ADDITIONAL_FE_ORIGINS:}
   secure-cookies: true
   cross-site-cookies: ${AUTH_CROSS_SITE_COOKIES:false}
   jwt:

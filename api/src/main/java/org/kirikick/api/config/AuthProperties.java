@@ -5,6 +5,7 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.net.URI;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.validation.annotation.Validated;
@@ -15,10 +16,16 @@ public record AuthProperties(
     @NotBlank String redisNamespace,
     @NotBlank String sessionRedisNamespace,
     @NotBlank String feOrigin,
+    List<String> devAdditionalFeOrigins,
     boolean secureCookies,
     boolean crossSiteCookies,
     @Valid @NotNull Jwt jwt,
     @Valid @NotNull Kakao kakao) {
+
+  public AuthProperties {
+    devAdditionalFeOrigins =
+        devAdditionalFeOrigins == null ? List.of() : List.copyOf(devAdditionalFeOrigins);
+  }
 
   @AssertTrue(message = "cross-site 쿠키에는 Secure 설정이 필요합니다.")
   public boolean isCrossSiteCookiesSecure() {
