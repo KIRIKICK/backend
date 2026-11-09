@@ -294,3 +294,5 @@ docker-compose.override.yaml
 
 # Runtime logs
 logs/
+
+**/AGENTS.md
