@@ -93,13 +93,15 @@ public final class JwtTokenService {
     try {
       UUID.fromString(token.getSubject());
       String sid = token.getClaimAsString("sid");
+      Instant now = clock.instant();
       if (sid != null
           && sid.matches("[A-Za-z0-9_-]{1,128}")
           && token.getAudience().contains(audience)
           && token.getIssuedAt() != null
           && token.getExpiresAt() != null
-          && !token.getIssuedAt().isAfter(clock.instant())
-          && token.getExpiresAt().isAfter(token.getIssuedAt())) {
+          && !token.getIssuedAt().isAfter(now)
+          && token.getExpiresAt().isAfter(token.getIssuedAt())
+          && token.getExpiresAt().isAfter(now)) {
         return OAuth2TokenValidatorResult.success();
       }
     } catch (IllegalArgumentException | NullPointerException exception) {
