@@ -1,5 +1,6 @@
 package org.kirikick.api.auth.infra;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -9,6 +10,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 /** Coordinates temporary OAuth and signup slots without retaining framework session data. */
+@SuppressFBWarnings(
+    value = "VA_FORMAT_STRING_USES_NEWLINE",
+    justification = "The Lua script retains consistent LF line endings across platforms.")
 @RequiredArgsConstructor
 public final class RedisFlowClaimGuard {
 
