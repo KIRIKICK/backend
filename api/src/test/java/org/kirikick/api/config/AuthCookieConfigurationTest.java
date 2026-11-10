@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -46,6 +47,51 @@ class AuthCookieConfigurationTest {
           String name = properties.secureCookies() ? "__Host-refresh" : "dev-refresh";
           assertCookie(response.getCookie(name), properties.secureCookies(), "Strict");
           assertCookie(onboardingCookie(properties, -1), properties.secureCookies(), "Lax");
+        });
+  }
+
+  @ParameterizedTest
+  @CsvSource({"local,false", "dev,false", "prod,false", "dev,true"})
+  @DisplayName("빈 onboarding 쿠키 값은 쓰지 않고 다른 쿠키 헤더는 유지한다")
+  void suppressesOnlyEmptyOnboardingCookieValues(String profile, boolean crossSiteCookies) {
+    Map<String, Object> environment =
+        crossSiteCookies ? Map.of("AUTH_CROSS_SITE_COOKIES", "true") : Map.of();
+
+    configuration(profile, environment)
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          AuthProperties properties = context.getBean(AuthProperties.class);
+          MockHttpServletRequest request = new MockHttpServletRequest();
+          request.setSecure(properties.secureCookies());
+          MockHttpServletResponse response = new MockHttpServletResponse();
+          response.addHeader("Set-Cookie", "unrelated=preserved");
+
+          new AuthInfrastructureConfiguration()
+              .onboardingCookieSerializer(properties)
+              .writeCookieValue(new CookieValue(request, response, ""));
+
+          String name = properties.secureCookies() ? "__Host-onboarding" : "dev-onboarding";
+          assertThat(response.getCookie(name)).isNull();
+          assertThat(response.getHeaders("Set-Cookie")).containsExactly("unrelated=preserved");
+        });
+  }
+
+  @Test
+  @DisplayName("비어 있지 않은 onboarding 쿠키 값을 쓰고 다시 읽을 수 있다")
+  void onboardingSerializerRetainsNonEmptyCookieReadRoundTrip() {
+    configuration("local", Map.of())
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          AuthProperties properties = context.getBean(AuthProperties.class);
+          Cookie onboarding = onboardingCookie(properties, -1);
+          MockHttpServletRequest request = new MockHttpServletRequest();
+          request.setCookies(onboarding);
+
+          assertThat(
+                  new AuthInfrastructureConfiguration()
+                      .onboardingCookieSerializer(properties)
+                      .readCookieValues(request))
+              .containsExactly("test-session");
         });
   }
 
@@ -255,11 +301,11 @@ class AuthCookieConfigurationTest {
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setSecure(properties.secureCookies());
     MockHttpServletResponse response = new MockHttpServletResponse();
-    CookieValue value = new CookieValue(request, response, "test-session");
-    value.setCookieMaxAge(maxAge);
+    CookieValue cookie = new CookieValue(request, response, "test-session");
+    cookie.setCookieMaxAge(maxAge);
     new AuthInfrastructureConfiguration()
         .onboardingCookieSerializer(properties)
-        .writeCookieValue(value);
+        .writeCookieValue(cookie);
     return response.getCookie(properties.secureCookies() ? "__Host-onboarding" : "dev-onboarding");
   }
 

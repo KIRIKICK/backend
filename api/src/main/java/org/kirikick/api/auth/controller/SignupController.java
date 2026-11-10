@@ -173,7 +173,7 @@ public class SignupController {
           @Header(
               name = "Set-Cookie",
               description =
-                  "HttpOnly Refresh 쿠키(운영 __Host-refresh, local dev-refresh, 기본 SameSite=Strict, DEV cross-site opt-in SameSite=None; Secure) 발급 및 임시 가입 세션 쿠키 삭제. 여러 Set-Cookie 헤더가 반환될 수 있습니다."),
+                  "HttpOnly Refresh 쿠키(운영 __Host-refresh, local dev-refresh, 기본 SameSite=Strict, DEV cross-site opt-in SameSite=None; Secure)를 발급합니다. 여러 Set-Cookie 헤더가 반환될 수 있습니다."),
           @Header(name = "Cache-Control", description = "no-store"),
           @Header(name = "Pragma", description = "no-cache")
         },
