@@ -93,6 +93,27 @@ class OAuthSessionCookieRaceIntegrationTest {
   }
 
   @Test
+  @DisplayName("기본 Session resolver와 응답 commit 이후 Session 생성 차단을 유지한다")
+  void retainsDefaultSessionResolverAndPostCommitProtection()
+      throws IOException, InterruptedException {
+    assertThat(ReflectionTestUtils.getField(sessionRepositoryFilter, "httpSessionIdResolver"))
+        .isInstanceOf(CookieHttpSessionIdResolver.class);
+
+    HttpResponse<Void> response =
+        HttpClient.newHttpClient()
+            .send(
+                HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/__test/post-commit-session"))
+                    .GET()
+                    .build(),
+                HttpResponse.BodyHandlers.discarding());
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(gate.postCommitSessionCreationWasRejected()).isTrue();
+    assertThat(gate.postCommitSessionCreationFailureMessage())
+        .isEqualTo("Cannot create a session after the response has been committed");
+  }
+
+  @Test
   @DisplayName("이전 흐름의 늦은 종료 응답은 새 onboarding 쿠키를 삭제하지 않는다")
   void delayedTerminalResponseDoesNotDeleteNewerOnboardingCookie() throws Exception {
     OIDC.clearCapturedRequests();
@@ -101,10 +122,6 @@ class OAuthSessionCookieRaceIntegrationTest {
     ReflectionTestUtils.setField(member, "status", UserStatus.SUSPENDED);
     users.saveAndFlush(member);
     identities.saveAndFlush(OAuthIdentity.create(member.getId(), OAuthProvider.KAKAO, subject));
-
-    assertThat(ReflectionTestUtils.getField(sessionRepositoryFilter, "httpSessionIdResolver"))
-        .isInstanceOf(CookieHttpSessionIdResolver.class);
-    verifyPostCommitSessionCreationIsRejected();
 
     HttpClient browser =
         HttpClient.newBuilder()
@@ -198,22 +215,6 @@ class OAuthSessionCookieRaceIntegrationTest {
     assertThat(authorization.statusCode()).isEqualTo(302);
     return new StartedFlow(
         cookie, URI.create(authorization.headers().firstValue("Location").orElseThrow()));
-  }
-
-  private void verifyPostCommitSessionCreationIsRejected()
-      throws IOException, InterruptedException {
-    HttpResponse<Void> response =
-        HttpClient.newHttpClient()
-            .send(
-                HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + port + "/__test/post-commit-session"))
-                    .GET()
-                    .build(),
-                HttpResponse.BodyHandlers.discarding());
-    assertThat(response.statusCode()).isEqualTo(200);
-    assertThat(gate.postCommitSessionCreationWasRejected()).isTrue();
-    assertThat(gate.postCommitSessionCreationFailureMessage())
-        .isEqualTo("Cannot create a session after the response has been committed");
   }
 
   private HttpResponse<Void> sendCallback(HttpClient browser, URI callback) {
