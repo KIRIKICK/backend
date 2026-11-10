@@ -140,7 +140,18 @@ public class AuthInfrastructureConfiguration {
 
   @Bean
   CookieSerializer onboardingCookieSerializer(AuthProperties properties) {
-    DefaultCookieSerializer cookie = new DefaultCookieSerializer();
+    DefaultCookieSerializer cookie =
+        new DefaultCookieSerializer() {
+          @Override
+          public void writeCookieValue(CookieValue value) {
+            if ("".equals(value.getCookieValue())) {
+              // Server invalidation remains authoritative; do not let a late expiry erase a newer
+              // flow.
+              return;
+            }
+            super.writeCookieValue(value);
+          }
+        };
     cookie.setCookieName(properties.secureCookies() ? "__Host-onboarding" : "dev-onboarding");
     cookie.setUseSecureCookie(properties.secureCookies());
     cookie.setUseHttpOnlyCookie(true);

@@ -90,6 +90,14 @@ OAuth/가입 temporary session은 HTTPS에서 `__Host-onboarding`, Secure, HttpO
 
 OAuth permission deadline은 10분, signup proof deadline은 5분이다. Spring Session idle timeout은 각각 10분·5분이며 context/CSRF 조회가 permission deadline을 연장하지 않는다. OAuth 시작과 OAuth→proof 전환은 기존 Session ID를 rotate하거나 attribute를 복사하지 않고, slot ID만 전달한 genuinely fresh Session을 만든다. Spring Security의 일반 session-fixation rotation은 이 명시적 lifecycle·binding과 충돌하므로 OAuth 흐름에는 적용하지 않는다. 한 브라우저에는 하나의 in-flight flow만 유지한다.
 
+### 늦은 onboarding 만료 응답
+
+정상 종료한 OAuth·가입 흐름은 기존 flow/claim 검증에 따라 서버 Session을 무효화한다. 다만 같은 onboarding cookie key의 오래된 삭제 응답이 새 흐름의 쿠키를 지우는 것을 막기 위해, onboarding serializer는 빈 값 만료 cookie를 쓰지 않는다. 이 변경은 서버 Session 삭제·TTL·flow 종료나 Refresh·CSRF cookie 정책을 바꾸지 않는다.
+
+따라서 종료된 Session ID가 브라우저에 물리적으로 남을 수 있다. ID만으로는 Session·가입 proof·인증 권한을 복원할 수 없고, 서버는 없는 Session 또는 binding이 맞지 않는 proof를 거절한다. 새 OAuth 시작은 새 Session/cookie를 발급해 복구한다.
+
+이 완화는 늦은 **삭제** 응답만 다룬다. 정상 cookie 발급 응답 간 순서 역전, Refresh 동시 사용, signup 실패의 Refresh 삭제, 초기 CSRF 응답 경합과 BUSY 정책은 별도 문제다. 혼합 배포 중 이전 인스턴스나 이미 대기 중인 삭제 응답에는 기존 위험이 남고, rollback하면 이 완화도 사라진다.
+
 signup claim은 DB 작업을 수락하는 원자적 경계다. live 5분 lease 동안에는 새 OAuth 시작이 `BUSY`이며 수락된 가입을 취소하지 않는다. lease가 만료되면 final publication은 fail-closed이며 새 시작만 가능하다. DB commit은 취소하지 않는다. commit 뒤 로그인 Session 생성·claim 종료·proof Session 삭제·cookie/JWT 응답 중 하나라도 실패하면 발급된 grant를 best-effort revoke하고 성공을 publish하지 않는다. revoke 또는 transport 결과가 불확실하면 TTL-bounded residual state가 남을 수 있으나, 문서는 부재·cookie 전달·응답 순서를 보장하지 않는다.
 
 ## Stale OAuth completion recovery
@@ -113,4 +121,4 @@ signup claim은 DB 작업을 수락하는 원자적 경계다. live 5분 lease �
 
 OAuth callback의 exact Session proof 저장 호출 성공 뒤 같은 ID·identity·발급 시각의 가입신청을 DB commit한다. 가입 context/POST는 ID–현재 proof–DB 신청을 대조하며 ID 자체는 권한이 아니다. 완료 DB transaction 반환 후에만 ACTIVE 회원을 조회해 로그인한다. 기존 완료 결과는 409이며 토큰 재발급·POST 자동 retry 없이 새 OAuth로 재진입한다. 이름은 별도 정규화 없이 원문으로 저장·비교한다.
 
-Redis claim/lease·BUSY·최신 flow·stale 처리는 이번 연결에서 유지한다. Session ACK는 최종 Session/쿠키 상태와 같지 않으며 S08 늦은 쿠키 삭제 경합은 별도 미해결이다. pending/completed 물리 보존 수치와 정리 책임 미확정은 rollout 게이트다. 상세 HTTP·실패 계약은 컨트롤러 선언에서 생성하는 OpenAPI(`/v3/api-docs`)를 기준으로 하며, 실행·접근 방법은 [API 문서 안내](../../README.md#api-문서)를 따른다.
+Redis claim/lease·BUSY·최신 flow·stale 처리는 이번 연결에서 유지한다. Session ACK는 최종 Session/쿠키 상태와 같지 않으며 S08 중 R1 늦은 onboarding 삭제 응답 경합은 완화하지만, 나머지 쿠키·Session 경합은 별도 미해결이다. pending/completed 물리 보존 수치와 정리 책임 미확정은 rollout 게이트다. 상세 HTTP·실패 계약은 컨트롤러 선언에서 생성하는 OpenAPI(`/v3/api-docs`)를 기준으로 하며, 실행·접근 방법은 [API 문서 안내](../../README.md#api-문서)를 따른다.

@@ -228,14 +228,8 @@ class OAuthBoundaryIntegrationTest {
     assertThat(callback.getResponse().getRedirectedUrl())
         .isEqualTo("http://localhost:5173/auth/kakao/callback?result=ERROR&errorCode=OAUTH_FAILED");
     assertThat(callback.getResponse().getCookie("dev-refresh")).isNull();
-    Cookie deletedOnboarding = callback.getResponse().getCookie("dev-onboarding");
-    assertThat(deletedOnboarding).isNotNull();
-    assertThat(deletedOnboarding.getValue()).isEmpty();
-    assertThat(deletedOnboarding.getMaxAge()).isZero();
-    assertThat(deletedOnboarding.isHttpOnly()).isTrue();
-    assertThat(deletedOnboarding.getPath()).isEqualTo("/");
-    assertThat(deletedOnboarding.getDomain()).isNull();
-    assertThat(deletedOnboarding.getAttribute("SameSite")).isEqualTo("Lax");
+    assertThat(callback.getResponse().getCookie("dev-onboarding")).isNull();
+    assertSessionDeleted(flow.cookie());
   }
 
   @Test
@@ -303,9 +297,8 @@ class OAuthBoundaryIntegrationTest {
     assertThat(applications.findById(applicationId))
         .hasValueSatisfying(application -> assertThat(application.isCompleted()).isTrue());
     assertThat(signup.getResponse().getCookie("dev-refresh")).isNotNull();
-    Cookie deletedOnboarding = signup.getResponse().getCookie("dev-onboarding");
-    assertThat(deletedOnboarding).isNotNull();
-    assertThat(deletedOnboarding.getMaxAge()).isZero();
+    assertThat(signup.getResponse().getCookie("dev-onboarding")).isNull();
+    assertSessionDeleted(onboarding);
   }
 
   @Test
@@ -822,6 +815,14 @@ class OAuthBoundaryIntegrationTest {
         + "\",\"displayName\":\""
         + displayName
         + "\",\"consents\":{\"service\":true,\"privacy\":true,\"ageConfirmed\":true}}";
+  }
+
+  private void assertSessionDeleted(Cookie cookie) {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setCookies(cookie);
+    assertThat(onboardingCookieSerializer.readCookieValues(request))
+        .singleElement()
+        .satisfies(sessionId -> assertThat(sessionRepository.findById(sessionId)).isNull());
   }
 
   private StartedFlow startFlow() throws Exception {

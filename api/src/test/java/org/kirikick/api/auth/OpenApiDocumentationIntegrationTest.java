@@ -265,7 +265,8 @@ class OpenApiDocumentationIntegrationTest {
     assertThat(signup.at("/responses/201/content/application~1json/schema/$ref").asText())
         .isEqualTo("#/components/schemas/TokenResponse");
     assertThat(signup.at("/responses/201/headers/Set-Cookie/description").asText())
-        .contains("HttpOnly", "SameSite=Strict");
+        .contains("HttpOnly", "SameSite=Strict")
+        .doesNotContain("임시 가입 세션 쿠키 삭제");
     assertThat(signup.at("/responses/201/headers/Cache-Control/description").asText())
         .isEqualTo("no-store");
     assertThat(signup.at("/responses/201/headers/Pragma/description").asText())
