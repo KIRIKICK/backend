@@ -211,7 +211,8 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 ### Git hooks (macOS / Windows)
 
-커밋 전에는 staged 변경의 Gitleaks 검사와 `spotlessCheck`, push 전에는 `test`를 실행합니다.
+`pre-commit` 훅은 staged 변경의 Gitleaks 검사와 `./gradlew spotlessCheck`를 실행합니다.
+`pre-push` 훅은 `./gradlew test`만 실행하며 Gitleaks 검사는 하지 않습니다.
 포맷 검사는 현재 작업 디렉터리의 전체 Java 소스가 대상이며, 파일을 자동 수정하거나 스테이징하지 않습니다.
 PostgreSQL 테스트는 Docker의 Testcontainers로 로컬과 CI에서 같은 방식으로 실행합니다. 외부 DB URL이나
 환경변수를 사용하지 않으며, Docker를 사용할 수 없으면 PostgreSQL 테스트는 건너뛰지 않고 실패합니다.
@@ -231,7 +232,7 @@ Git for Windows가 제공하는 셸을 사용하므로 Git Bash 터미널을 직
 git config --local core.hooksPath .githooks
 ```
 
-Gitleaks가 없거나 검사가 실패하면 commit/push를 중단합니다. 훅은 도구를 자동 설치하지 않습니다.
+Gitleaks가 없거나 Gitleaks·포맷 검사가 실패하면 commit을 중단합니다. 훅은 도구를 자동 설치하지 않습니다.
 훅은 우회할 수 있으므로 CI 검사도 유지합니다.
 훅 회귀 테스트는 `python3 scripts/test_git_hooks.py`로 실행하며 Windows에서는 `python`을 사용합니다.
 CI에서는 기존 `ubuntu-latest` 빌드 잡에서 같은 회귀 테스트를 실행합니다.
