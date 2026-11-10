@@ -2,6 +2,8 @@
 
 Gradle 멀티모듈 프로젝트입니다. 실행 모듈은 `api`이고, `test-support`는 테스트 전용 공통 라이브러리입니다.
 
+개발·협업 기준은 [백엔드 협업 가이드](CONTRIBUTING.md)를 참고하세요.
+
 ```text
 backend/
 ├── settings.gradle       # 포함할 모듈 선언
