@@ -53,6 +53,73 @@ IDE에서 애플리케이션을 직접 실행할 때도 작업 디렉터리를 `
 테스트는 Docker가 필요하지만 외부 DB URL이나 `.env` 값을 사용하지 않습니다. 자세한 실행 방법은
 [JPA 테스트 설정](api/src/test/README.md)을 참고하세요.
 
+## SpotBugs PR advisory
+
+`SpotBugs Advisory`는 main 대상 PR에서 제품 CI와 별도로 실행한다. `spotbugs-main-advisory`는
+필수 체크로 등록하지 않는다. 실패한 optional check를 유지하는 정책이며, 경고나 분석 오류를 성공으로
+숨기는 정책이 아니다. 기존 `CI`와 그 성공한 main-push 실행만 소비하는 `CD`는 변경하지 않는다.
+기존 CI의 workflow 문법 검사 실패는 이 advisory의 분석 실패와 별개다.
+
+### 로컬 실행과 분석 범위
+
+backend 저장소 루트에서 실행한다. 앱·제품 테스트·DB·Redis를 실행하거나 `.env`·키를 준비할 필요는 없다.
+
+```sh
+./gradlew spotbugsMain --continue --no-daemon
+python3 scripts/check_spotbugs_report.py
+python3 scripts/test_check_spotbugs_report.py
+```
+
+현재는 `api/main`만 분석한다. 루트 명령은 `spotbugsMain` task가 있는 하위 프로젝트를 선택하므로,
+서브모듈 추가만으로 분석되지 않는다. task 선택과 실제 실행도 다르다(`NO-SOURCE`, disabled, `onlyIf`).
+`--continue`는 실패 후 가능한 독립 task를 계속 시도하되 최종 실패는 유지한다.
+`runOnCheck=false`, `ignoreFailures=false`를 유지하며 일반 `build/check`에는 분석을 연결하지 않는다.
+
+새 모듈에 task를 도입하는 PR에서는 실제 graph·실행, HTML/XML pair, 분석기·보조 classpath,
+`runOnCheck=false`, `ignoreFailures=false`, 추가 시간·메모리·공개 범위와 전체 advisory 실패 영향을
+함께 검토한다. 현재 task 하나 때문에 공용 inventory나 일괄 플러그인 적용은 추가하지 않는다.
+
+### 결과 해석과 검토 책임
+
+- PR 작성자는 매 실행의 analyzer/guard/upload outcome과 로그·보고서를 확인하고, 백엔드 리뷰어가
+  결과와 후속 처리를 검토한다. 새 경고는 실제 결함·의도된 동작/오탐·추가 조사 필요로 사람이 분류하고
+  PR에 근거 또는 후속 이슈를 남긴다. 분석 오류·보고서 누락을 경고 0건으로 보고하지 않는다.
+- guard 종료 코드는 `0=필수 보고서 근거상 발견 없음`, `1=발견 사항 있음`, `2=분석 불완전`이다.
+  API pair는 필수이고, 재귀적으로 발견한 각 모듈 pair의 파일·XML·입력·오류·missing class를 확인한다.
+  하나의 모듈이라도 문제가 있으면 실패한다. 분석 실패 후에도 취소되지 않았다면 guard·업로드·summary를 시도한다.
+- guard가 성공해도 analyzer가 실패했다면 check는 실패 상태다. 구분 근거가 부족하면 수동 검토한다.
+  Gradle 종료 코드나 XML `total_classes` 하나만으로 완전성을 판단하지 않는다. HTML/XML 동시 출력에서는
+  XML 클래스 통계가 0인 사례가 있어 실제 입력·실행 로그·HTML/XML을 함께 확인한다.
+- 경고 0건에는 검토 후 억제한 항목이 포함될 수 있으며 결함 없음이나 보안 안전을 뜻하지 않는다.
+- 보고서가 전혀 없는 미래 모듈은 파일 검색만으로 탐지할 수 없다. 신규 모듈 도입 PR에서 검증하고,
+  필요성이 확인되면 expected-task inventory를 별도로 검토한다. 서로 독립인 분석이 늘면 시간·메모리도 늘 수 있다.
+
+### 공개·보관·fork 정책
+
+공개 저장소의 로그·summary와 HTML/XML에 클래스명·메서드·경로·결함 의심 정보가 노출될 수 있음을
+전제로 운영한다. artifact 다운로드는 GitHub 로그인과 저장소 읽기 접근이 필요하며 익명 다운로드를 보장하지 않는다.
+artifact에는 `**/build/reports/spotbugs/main.html`, `**/build/reports/spotbugs/main.xml`만 포함하고
+workspace·소스 사본·환경파일·키·캐시·로컬 문서는 업로드하지 않는다.
+artifact 보관은 7일이며 저장소·조직·enterprise 정책 상한을 확인한다. 로그 보관은 별도 Actions 정책을 따른다.
+
+실행은 secrets 없는 `pull_request`, `contents: read`, checkout 자격 증명 미보존, 읽기 전용 Gradle 캐시로
+제한한다. fork PR은 승인 정책에 따라 대기할 수 있으며 실제 실행·업로드 가능 여부는 hosted run에서 확인한다.
+이를 위해 `pull_request_target`, secrets, OIDC 또는 쓰기 권한을 추가하지 않는다.
+PR별 concurrency로 이전 실행을 취소하며 취소된 실행에서는 후속 artifact·summary가 없을 수 있다.
+
+### 최초 PR에서 남은 검증
+
+- 실제 check 이름·App·SHA와 branch protection/ruleset의 required checks를 확인한다. 별도 workflow라는
+  이유만으로 비차단이라고 단정하지 않는다. 자연 실패가 없다면 같은 job에 임시 `exit 1`을 넣어
+  실패 check가 필수가 아닌지, merge UI의 다른 차단 사유와 분리해 확인한다. 실패 상태로 merge/bypass하지
+  않고 임시 코드를 제거한 최종 SHA를 재실행한다. 이 검증은 분석 오류 분류 테스트를 대체하지 않는다.
+- 기존 CI conclusion과 CI 기반 CD에 영향이 없는지, 실제 PR 업데이트 취소와 fork 승인·업로드를 확인한다.
+  확인하지 못한 항목은 미검증으로 남긴다.
+- artifact의 모듈 경로·파일 목록·접근·실제 만료, runner/JDK/Gradle/엔진 버전과 실행 시간·캐시 효과를 기록한다.
+  읽기 전용 캐시가 중복 컴파일을 없앤다고 가정하지 않는다. 비용이나 잡음이 크면 수동·정기 실행을 재검토한다.
+- 공개·보관·검토 책임을 유지할 수 없거나 check가 필수가 됨, CI/CD 결합, 권한 확대 또는 불완전 분석의
+  성공 처리가 필요해지면 활성화를 중단하고 정책을 다시 검토한다.
+
 ## API 문서
 
 애플리케이션 실행 후 `local`·`dev` 프로필에서만 문서를 제공합니다. `prod` 및 그 외 프로필에서는 문서 생성과 접근을 차단합니다.
