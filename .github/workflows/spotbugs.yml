@@ -1,0 +1,76 @@
+name: SpotBugs Advisory
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spotbugs-advisory-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  spotbugs-main-advisory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: true
+
+      - name: Test report and workflow contracts
+        run: python3 scripts/test_check_spotbugs_report.py
+
+      - name: Analyze main bytecode
+        id: analysis
+        run: ./gradlew spotbugsMain --continue --no-daemon
+
+      - name: Check reports
+        id: reports
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check_spotbugs_report.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        id: upload
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spotbugs-main-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            **/build/reports/spotbugs/main.html
+            **/build/reports/spotbugs/main.xml
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Summarize outcomes
+        if: ${{ !cancelled() }}
+        env:
+          ANALYZER_OUTCOME: ${{ steps.analysis.outcome }}
+          REPORT_OUTCOME: ${{ steps.reports.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          {
+            echo '## SpotBugs advisory outcomes'
+            printf '%s\n' "- Analyzer: $ANALYZER_OUTCOME" "- Report guard: $REPORT_OUTCOME" "- Artifact upload: $UPLOAD_OUTCOME"
+            if [[ "$ANALYZER_OUTCOME" != success || "$REPORT_OUTCOME" != success || "$UPLOAD_OUTCOME" != success ]]; then
+              echo 'HUMAN_REVIEW_REQUIRED: inspect analyzer logs and reports; clean reports do not override analyzer failure.'
+            fi
+            echo 'This is a non-required advisory check. No findings does not establish absence of defects.'
+          } >> "$GITHUB_STEP_SUMMARY"
