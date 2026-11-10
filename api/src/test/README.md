@@ -74,11 +74,11 @@ PostgreSQL `@PostgresJpaTest`는 Flyway를 끄고 Hibernate `create-drop`을 사
 ## 아키텍처 규칙
 
 공유 `ArchitectureTest`는 각 Java 모듈의 main 클래스 출력만 검사합니다. API 전용 클래스나 패키지에
-의존하지 않으며, 공통 소스와 모듈 자동 적용 방식은 [루트 문서](../../../README.md#아키텍처-검사)를 참고하세요.
+의존하지 않으며, 공통 소스와 모듈 자동 적용 방식은 [협업 가이드](../../../CONTRIBUTING.md#아키텍처-검사)를 참고하세요.
 
 기능별 `controller`, `controller.dto`, `service`, `repository`, `domain` 패키지 규칙과 controller DTO 반환 규칙은
 공유 ArchUnit 테스트로 검증합니다.
 
 ```sh
-./gradlew --tests 'org.kirikick.architecture.*'
+./gradlew :api:test --tests 'org.kirikick.architecture.*'
 ```
