@@ -40,7 +40,7 @@ jobs:
 
       - name: Analyze main bytecode
         id: analysis
-        run: ./gradlew spotbugsMain --continue --no-daemon && sleep 120 && exit 1
+        run: ./gradlew spotbugsMain --continue --no-daemon
 
       - name: Check reports
         id: reports
