@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.util.List;
+import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.validation.annotation.Validated;
@@ -45,20 +46,7 @@ public record AuthProperties(
 
   @AssertTrue(message = "FE 주소는 경로·인증정보·쿼리가 없는 HTTP(S) origin이어야 합니다.")
   public boolean isFeOriginValid() {
-    if (feOrigin == null) {
-      return false;
-    }
-    try {
-      URI uri = URI.create(feOrigin);
-      return isHttp(uri)
-          && uri.getHost() != null
-          && uri.getRawUserInfo() == null
-          && uri.getRawQuery() == null
-          && uri.getRawFragment() == null
-          && (uri.getRawPath() == null || uri.getRawPath().isEmpty());
-    } catch (IllegalArgumentException exception) {
-      return false;
-    }
+    return AuthFrontendPolicy.canonicalOriginOrNull(feOrigin) != null;
   }
 
   private static boolean isHttp(URI uri) {

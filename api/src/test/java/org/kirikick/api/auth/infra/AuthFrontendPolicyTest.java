@@ -5,8 +5,55 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class AuthFrontendPolicyTest {
+  @ParameterizedTest
+  @NullAndEmptySource
+  @ValueSource(
+      strings = {
+        "null",
+        "https://app.example/evil",
+        "https://app.example?x=1",
+        "https://user@app.example",
+        "https://app.example:",
+        "https://app.example:65536",
+        "https://[invalid",
+        "ftp://app.example"
+      })
+  void returnsNullForMissingOrInvalidOrigins(String origin) {
+    assertThat(AuthFrontendPolicy.canonicalOriginOrNull(origin)).isNull();
+    assertThat(new AuthFrontendPolicy("https://app.example", List.of()).isAllowed(origin))
+        .isFalse();
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "https://APP.example:443, https://app.example",
+    "http://APP.example:80, http://app.example",
+    "https://APP.example:8443, https://app.example:8443",
+    "http://localhost:5173, http://localhost:5173",
+    "https://app.example:0, https://app.example:0",
+    "https://app.example:65535, https://app.example:65535"
+  })
+  void canonicalizesValidOrigins(String origin, String expected) {
+    assertThat(AuthFrontendPolicy.canonicalOriginOrNull(origin)).isEqualTo(expected);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"https://app.example:", "https://app.example:65536"})
+  void rejectsInvalidDefaultAndAdditionalOrigins(String origin) {
+    assertThatThrownBy(() -> new AuthFrontendPolicy(origin, List.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("not an origin");
+    assertThatThrownBy(() -> new AuthFrontendPolicy("https://app.example", List.of(origin)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("not an origin");
+  }
+
   @Test
   void canonicalizesOnlyAnAllowedExplicitSelectorAndPreservesTheConfiguredDefaultCallback() {
     AuthFrontendPolicy policy =

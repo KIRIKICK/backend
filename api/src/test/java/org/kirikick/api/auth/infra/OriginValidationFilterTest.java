@@ -7,40 +7,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 class OriginValidationFilterTest {
-
-  @ParameterizedTest
-  @NullAndEmptySource
-  @ValueSource(
-      strings = {
-        "null",
-        "https://app.example/evil",
-        "https://app.example?x=1",
-        "https://user@app.example",
-        "https://app.example:",
-        "https://app.example:65536",
-        "https://[invalid",
-        "ftp://app.example"
-      })
-  void returnsNullForMissingOrInvalidOrigins(String origin) {
-    assertThat(OriginValidationFilter.canonicalOriginOrNull(origin)).isNull();
-    assertThat(new AuthFrontendPolicy("https://app.example", List.of()).isAllowed(origin))
-        .isFalse();
-  }
-
-  @Test
-  void canonicalizesValidOrigins() {
-    assertThat(OriginValidationFilter.canonicalOriginOrNull("https://APP.example:443"))
-        .isEqualTo("https://app.example");
-    assertThat(OriginValidationFilter.canonicalOriginOrNull("http://localhost:5173"))
-        .isEqualTo("http://localhost:5173");
-  }
 
   @Test
   void acceptsOnlyTheExactNormalizedOriginForMutations() throws Exception {

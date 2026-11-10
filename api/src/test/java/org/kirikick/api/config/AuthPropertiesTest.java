@@ -23,7 +23,15 @@ class AuthPropertiesTest {
 
   @ParameterizedTest
   @NullAndEmptySource
-  @ValueSource(strings = {" ", "https://[invalid", "https://app.example/path", "file:///app"})
+  @ValueSource(
+      strings = {
+        " ",
+        "https://[invalid",
+        "https://app.example/path",
+        "https://app.example:",
+        "https://app.example:65536",
+        "file:///app"
+      })
   void rejectsMissingOrInvalidFrontendOrigins(String origin) {
     AuthProperties settings = properties("test:auth", "test:session", origin);
 
@@ -34,9 +42,33 @@ class AuthPropertiesTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"https://app.example", "http://localhost:5173"})
+  @ValueSource(strings = {"https://app.example:", "https://app.example:65536"})
+  void rejectsMalformedPortsWithTheFrontendOriginConstraint(String origin) {
+    try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+      assertThat(factory.getValidator().validate(properties("test:auth", "test:session", origin)))
+          .extracting(violation -> violation.getPropertyPath().toString())
+          .containsExactly("feOriginValid");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "https://app.example",
+        "HTTPS://APP.example:443",
+        "HTTP://APP.example:80",
+        "https://app.example:8443",
+        "http://localhost:5173",
+        "https://app.example:0",
+        "https://app.example:65535"
+      })
   void acceptsValidFrontendOrigins(String origin) {
-    assertThat(properties("test:auth", "test:session", origin).isFeOriginValid()).isTrue();
+    AuthProperties properties = properties("test:auth", "test:session", origin);
+    assertThat(properties.isFeOriginValid()).isTrue();
+    assertThat(properties.feOrigin()).isEqualTo(origin);
+    try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+      assertThat(factory.getValidator().validate(properties)).isEmpty();
+    }
   }
 
   @ParameterizedTest
