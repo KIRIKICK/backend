@@ -1,5 +1,6 @@
 package org.kirikick.api.auth.infra;
 
+import java.net.URI;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -12,7 +13,7 @@ public final class AuthFrontendPolicy {
   private final Set<String> allowedOrigins;
 
   public AuthFrontendPolicy(String defaultOrigin, List<String> additionalOrigins) {
-    String canonicalDefaultOrigin = OriginValidationFilter.canonicalOrigin(defaultOrigin);
+    String canonicalDefaultOrigin = canonicalOrigin(defaultOrigin);
     this.defaultOrigin = defaultOrigin;
     Set<String> origins = new LinkedHashSet<>();
     origins.add(canonicalDefaultOrigin);
@@ -20,7 +21,7 @@ public final class AuthFrontendPolicy {
       if (origin == null || origin.isBlank()) {
         throw new IllegalArgumentException("additional frontend origin must not be blank");
       }
-      origins.add(OriginValidationFilter.canonicalOrigin(origin));
+      origins.add(canonicalOrigin(origin));
     }
     allowedOrigins = Set.copyOf(origins);
   }
@@ -34,7 +35,7 @@ public final class AuthFrontendPolicy {
   }
 
   public boolean isAllowed(String origin) {
-    String canonical = OriginValidationFilter.canonicalOriginOrNull(origin);
+    String canonical = canonicalOriginOrNull(origin);
     return canonical != null && allowedOrigins.contains(canonical);
   }
 
@@ -45,7 +46,7 @@ public final class AuthFrontendPolicy {
     if (origins.length != 1 || !isAllowed(origins[0])) {
       throw new IllegalArgumentException("invalid frontend origin");
     }
-    return OriginValidationFilter.canonicalOrigin(origins[0]);
+    return canonicalOrigin(origins[0]);
   }
 
   public String callback(String origin) {
@@ -54,5 +55,43 @@ public final class AuthFrontendPolicy {
       throw new IllegalArgumentException("invalid frontend origin");
     }
     return selected + CALLBACK_PATH;
+  }
+
+  public static String canonicalOriginOrNull(String value) {
+    if (value == null) {
+      return null;
+    }
+
+    try {
+      return canonicalOrigin(value);
+    } catch (IllegalArgumentException exception) {
+      return null;
+    }
+  }
+
+  public static String canonicalOrigin(String value) {
+    URI uri = URI.create(value);
+    if (uri.getHost() == null
+        || uri.getRawUserInfo() != null
+        || uri.getRawQuery() != null
+        || uri.getRawFragment() != null
+        || (uri.getRawPath() != null && !uri.getRawPath().isEmpty())
+        || uri.getRawAuthority().endsWith(":")
+        || !("https".equalsIgnoreCase(uri.getScheme())
+            || "http".equalsIgnoreCase(uri.getScheme()))) {
+      throw new IllegalArgumentException("not an origin");
+    }
+    int port = uri.getPort();
+    if (port < -1 || port > 65535) {
+      throw new IllegalArgumentException("not an origin");
+    }
+    boolean defaultPort =
+        port == -1
+            || (port == 443 && "https".equalsIgnoreCase(uri.getScheme()))
+            || (port == 80 && "http".equalsIgnoreCase(uri.getScheme()));
+    return uri.getScheme().toLowerCase()
+        + "://"
+        + uri.getHost().toLowerCase()
+        + (defaultPort ? "" : ":" + port);
   }
 }

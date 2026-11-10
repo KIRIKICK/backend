@@ -113,6 +113,7 @@ class AuthCookieConfigurationTest {
         "https://app.example?query=true",
         "https://app.example#fragment",
         "https://app.example/path",
+        "https://app.example:",
         "https://app.example:65536",
         "https://app.example\r\ninvalid",
         "https://*.example",
@@ -121,6 +122,45 @@ class AuthCookieConfigurationTest {
   void rejectsAnInvalidDevAdditionalOriginAtStartup(String origin) {
     lazyConfiguration("dev", Map.of("AUTH_DEV_ADDITIONAL_FE_ORIGINS", origin))
         .run(context -> assertThat(context).hasFailed());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"https://app.example:", "https://app.example:65536"})
+  void rejectsInvalidDefaultOriginDuringBindingInEagerAndLazyContexts(String origin) {
+    for (ApplicationContextRunner runner :
+        new ApplicationContextRunner[] {
+          configuration("dev", Map.of("AUTH_FE_ORIGIN", origin)),
+          lazyConfiguration("dev", Map.of("AUTH_FE_ORIGIN", origin))
+        }) {
+      runner.run(context -> {
+        assertThat(context).hasFailed();
+        assertThat(context.getStartupFailure())
+            .hasStackTraceContaining("FE 주소는 경로·인증정보·쿼리가 없는 HTTP(S) origin이어야 합니다.")
+            .hasStackTraceContaining("feOriginValid");
+      });
+    }
+  }
+
+  @Test
+  void eagerlyCreatesPolicyWithoutNormalizingTheConfiguredDefaultOrigin() {
+    assertPolicyEagerlyCreated(
+        configuration("dev", Map.of("AUTH_FE_ORIGIN", "https://App.example:443")));
+  }
+
+  @Test
+  void eagerlyCreatesPolicyWithLazyInitializationWithoutNormalizingTheConfiguredDefaultOrigin() {
+    assertPolicyEagerlyCreated(
+        lazyConfiguration("dev", Map.of("AUTH_FE_ORIGIN", "https://App.example:443")));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"https://app.example:", "https://app.example:65536"})
+  void rejectsMalformedAdditionalOriginAtPolicyCreation(String origin) {
+    lazyConfiguration("dev", Map.of("AUTH_DEV_ADDITIONAL_FE_ORIGINS", origin))
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).hasStackTraceContaining("not an origin");
+        });
   }
 
   @ParameterizedTest
@@ -223,6 +263,20 @@ class AuthCookieConfigurationTest {
     return response.getCookie(properties.secureCookies() ? "__Host-onboarding" : "dev-onboarding");
   }
 
+  private static void assertPolicyEagerlyCreated(ApplicationContextRunner runner) {
+    runner.run(context -> {
+      assertThat(context).hasNotFailed();
+      ConfigurableListableBeanFactory beans =
+          context.getSourceApplicationContext().getBeanFactory();
+      assertThat(beans.containsSingleton("authFrontendPolicy")).isTrue();
+      assertThat(context.getBean(AuthProperties.class).feOrigin())
+          .isEqualTo("https://App.example:443");
+      AuthFrontendPolicy policy = context.getBean(AuthFrontendPolicy.class);
+      assertThat(policy.defaultOrigin()).isEqualTo("https://App.example:443");
+      assertThat(policy.allowedOrigins()).containsExactly("https://app.example");
+    });
+  }
+
   private static void assertCookie(Cookie cookie, boolean secure, String sameSite) {
     assertThat(cookie).isNotNull();
     assertThat(cookie.getSecure()).isEqualTo(secure);
@@ -278,6 +332,11 @@ class AuthCookieConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   @EnableConfigurationProperties(AuthProperties.class)
   static class Binding {
+    @Bean
+    AuthFrontendPolicy authFrontendPolicy(AuthProperties properties, Environment environment) {
+      return new AuthInfrastructureConfiguration().authFrontendPolicy(properties, environment);
+    }
+
     @Bean
     RedisRefreshSessionStore refreshStore(AuthProperties properties, Environment environment) {
       return new AuthInfrastructureConfiguration()

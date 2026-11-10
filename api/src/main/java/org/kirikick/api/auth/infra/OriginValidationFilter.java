@@ -6,7 +6,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URI;
 import lombok.RequiredArgsConstructor;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
@@ -41,43 +40,5 @@ public final class OriginValidationFilter extends OncePerRequestFilter {
       return;
     }
     chain.doFilter(request, response);
-  }
-
-  public static String canonicalOriginOrNull(String value) {
-    if (value == null) {
-      return null;
-    }
-
-    try {
-      return canonicalOrigin(value);
-    } catch (IllegalArgumentException exception) {
-      return null;
-    }
-  }
-
-  public static String canonicalOrigin(String value) {
-    URI uri = URI.create(value);
-    if (uri.getHost() == null
-        || uri.getRawUserInfo() != null
-        || uri.getRawQuery() != null
-        || uri.getRawFragment() != null
-        || (uri.getRawPath() != null && !uri.getRawPath().isEmpty())
-        || uri.getRawAuthority().endsWith(":")
-        || !("https".equalsIgnoreCase(uri.getScheme())
-            || "http".equalsIgnoreCase(uri.getScheme()))) {
-      throw new IllegalArgumentException("not an origin");
-    }
-    int port = uri.getPort();
-    if (port < -1 || port > 65535) {
-      throw new IllegalArgumentException("not an origin");
-    }
-    boolean defaultPort =
-        port == -1
-            || (port == 443 && "https".equalsIgnoreCase(uri.getScheme()))
-            || (port == 80 && "http".equalsIgnoreCase(uri.getScheme()));
-    return uri.getScheme().toLowerCase()
-        + "://"
-        + uri.getHost().toLowerCase()
-        + (defaultPort ? "" : ":" + port);
   }
 }
