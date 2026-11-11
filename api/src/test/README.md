@@ -119,3 +119,25 @@ stub하지 않는다.
 ```sh
 ./gradlew :api:test --tests org.kirikick.api.auth.RefreshTokenConcurrencyIntegrationTest --rerun-tasks
 ```
+
+## OAuth 성공 응답의 쿠키 적용·전달 순서 선행 검증 (#55)
+
+`OAuthSuccessResponseOrderIntegrationTest`는 A의 서버 처리가 정상 종료된 뒤 B를
+시작하는 공개 OAuth 경로를 사용한다. 같은 계정·다른 계정 각각에서 실제 callback
+응답 헤더를 capture하고, 새 `CookieManager`에 A→B·B→A 순서로 적용한다.
+이 모델은 실제 네트워크 헤더 도착 순서나 브라우저 동작의 증거는 아니다.
+
+다른 계정의 실제 전달 검사는 callback 전용 relay에서 A의 첫 응답 헤더를 보류하고
+B를 먼저 적용한 뒤 A를 전달한다. 상태·`Location`·캐시·모든 `Set-Cookie`의 보존과
+클라이언트의 헤더 수신을 확인하며, body 또는 Future 완료 지연만을 근거로 삼지 않는다.
+최종 쿠키로 Refresh한 뒤 선택 family·JWT·보호 API의 계정 결합을 확인한다. 성공 callback은 기존 CSRF를 만료시킬 수 있으므로, 모든 성공 응답을 적용한 뒤 CSRF를 순차적으로 다시 확보해 R5 초기 CSRF 응답 경합과 분리한다.
+미선택 family 상태는 별도로 관찰하며, 마지막 로그인 시작이 승리해야 한다는 정책을
+새로 정하거나 재사용 탐지 정책을 완화하지 않는다.
+
+기존 OAuth의 stale/replacement, R1의 onboarding 만료, R3의 동일 토큰 재사용,
+R4의 실패 보상·늦은 삭제, R5의 초기 CSRF 응답 경합과는 다른 검증이다.
+실제 브라우저·FE 화면·운영 발생 여부와 배포 FE의 원본은 검증하지 않는다.
+
+```sh
+./gradlew :api:test --tests org.kirikick.api.auth.OAuthSuccessResponseOrderIntegrationTest --rerun-tasks
+```
