@@ -100,6 +100,12 @@ OAuth permission deadline은 10분, signup proof deadline은 5분이다. Spring 
 
 signup claim은 DB 작업을 수락하는 원자적 경계다. live 5분 lease 동안에는 새 OAuth 시작이 `BUSY`이며 수락된 가입을 취소하지 않는다. lease가 만료되면 final publication은 fail-closed이며 새 시작만 가능하다. DB commit은 취소하지 않는다. commit 뒤 로그인 Session 생성·claim 종료·proof Session 삭제·cookie/JWT 응답 중 하나라도 실패하면 발급된 grant를 best-effort revoke하고 성공을 publish하지 않는다. revoke 또는 transport 결과가 불확실하면 TTL-bounded residual state가 남을 수 있으나, 문서는 부재·cookie 전달·응답 순서를 보장하지 않는다.
 
+### 가입 Refresh 발급 시도 전 실패
+
+가입에서 `writeRefresh` 호출을 시도하기 전에 실패하면, A 본인 grant의 폐기는 항상 시도하되 Refresh 삭제 쿠키는 보내지 않는다. 따라서 늦은 A 실패 응답이 새 로그인 B나 기존 유효 로그인 C의 쿠키를 지우지 않는다. 다른 계정의 기존 로그인도 유지하며 실패한 가입을 계정 전환 성공으로 취급하지 않는다. 폐기 실패는 원래 오류를 가리지 않고 기존 TTL에 의존하는 잔여 위험을 남긴다.
+
+호출 시도 여부는 쿠키 헤더 추가·클라이언트 전달 성공과 다르다. 호출 시도 이후 실패의 기존 폐기·삭제 보상과 OAuth 보상은 유지하므로 부분 쓰기·불명확한 전달·늦은 삭제 경합은 남는다. 이 변경은 R4의 호출 시도 전 실패만 완화하며 R2·R3·R5나 기존 401 오류 처리를 변경하지 않는다. 이전 버전의 대기 응답·혼합 배포·rollback에는 기존 위험이 남는다.
+
 ## Stale OAuth completion recovery
 
 오래된 callback은 request-local marker가 **검증된 flow·claim·wrapped resolved Session ID와 정확히 일치할 때만** stale completion으로 취급한다. 이 좁은 경로는 fixed `303`·`Cache-Control: no-store` 응답을 준비할 수 있지만, outer boundary가 reset/rebuild하기 전에는 아직 commit되지 않았는지, 준비한 status·`Location`·cache header가 정확한지, public old `SessionRepository.findById`가 `null`인지 다시 확인한다. 세 조건이 모두 맞을 때만 fixed response를 재구성하며 `Set-Cookie`는 쓰지 않는다.
