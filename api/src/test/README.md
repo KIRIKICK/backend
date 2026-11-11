@@ -82,3 +82,24 @@ PostgreSQL `@PostgresJpaTest`는 Flyway를 끄고 Hibernate `create-drop`을 사
 ```sh
 ./gradlew :api:test --tests 'org.kirikick.architecture.*'
 ```
+
+## Signup Refresh 발급 시도 전 실패 회귀 (#50, #51)
+
+`SignupRefreshCookieFailureIntegrationTest`는 가입 실패의 grant 보상과 Refresh 쿠키 보존을 실제 HTTP로 검증한다.
+
+| 실패 주입 지점·원인 | 최종 응답 | Refresh Set-Cookie |
+| --- | --- | --- |
+| grant 반환 전 불투명한 발급 오류(A0) | 401 `AUTHENTICATION_REQUIRED` | 없음 |
+| 실제 FINISH_SIGNUP 완료 후 불투명한 결과 전달 오류(A1) | error dispatch를 거친 401 `AUTHENTICATION_REQUIRED` | 없음 |
+| 같은 A1의 Redis 연결 오류로 분류되는 원인 | MVC 503 `AUTH_STATE_UNAVAILABLE` | 없음 |
+
+- A1은 실제 발급·Redis 종료 처리 **뒤** 호출자에게 결과가 돌아오지 않는 상황을 한 번 주입한다. 실제 Redis 장애나 운영 발생을 관측했다는 뜻은 아니다.
+- 가입 DB는 완료되고 회원·OAuth 신원은 남는다. A1의 Refresh grant는 폐기되고 쿠키 발급은 시작되지 않는다. claim은 종료되지만 onboarding Session은 남을 수 있으며, Session의 존재와 proof 권한의 유효성은 구분한다.
+- #50에서는 A1의 삭제 헤더와 늦은 A 응답에 의한 B 쿠키 소실을 재현했다. #51 회귀에서는 삭제 헤더가 없어도 loopback 중계로 A의 **첫 응답 헤더**를 보류하고 정상 B OAuth·Refresh를 수행한다. A 전달 전후 B 쿠키·서버 grant 유지와 실제 Refresh 성공, A grant inactive를 확인한다. 중계 전후 상태·본문·모든 Set-Cookie와 캐시 헤더를 대조하고 클라이언트의 헤더 수신도 별도로 확인한다.
+- 다른 계정의 기존 유효 로그인도 가입의 발급 시도 전 실패로 삭제하지 않는다. 동일 쿠키 저장소에서 기존 쿠키·grant 보존과 실제 Refresh 성공을 확인한다. 실패한 가입을 계정 전환 성공으로 취급하지 않는다.
+- Origin·CSRF·live signup BUSY를 우회하지 않는다. 검증은 CookieManager 기반이며 실제 브라우저의 Secure·SameSite·교차 사이트 동작, 쿠키 발급 시작 후 부분 쓰기, 실제 Redis 장애는 미검증이다.
+- 다섯 테스트와 중계는 회귀 검증으로 유지한다. `writeRefresh` 호출 시도 이후 실패의 기존 폐기·삭제 보상은 유지하며, 부분 전달이나 늦은 삭제 경합은 해결하지 않는다. 기존 불투명한 예외의 401 처리, OAuth 보상과 R2·R3·R5 정책도 변경하지 않는다.
+
+```sh
+./gradlew :api:test --tests org.kirikick.api.auth.SignupRefreshCookieFailureIntegrationTest
+```

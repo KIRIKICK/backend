@@ -331,6 +331,7 @@ public class SignupController {
     }
 
     LoginGrant grant = null;
+    boolean refreshWriteAttempted = false;
     try {
       User member =
           users
@@ -338,13 +339,14 @@ public class SignupController {
               .orElseThrow(() -> new IllegalStateException("완료된 가입 회원을 찾을 수 없습니다."));
       grant = sessions.login(member);
       finishCompletedClaimOrReject(session, proof, claimId);
+      refreshWriteAttempted = true;
       http.writeRefresh(response, grant);
       return new TokenResponse(grant.accessToken(), "Bearer", JwtTokenService.ACCESS_TOKEN_SECONDS);
     } catch (RuntimeException exception) {
       if (grant == null) {
         finishFailedClaim(session, proof, claimId);
       } else {
-        bestEffortRevoke(grant, response);
+        bestEffortRevoke(grant, response, refreshWriteAttempted);
       }
       throw unavailableIfRecognized(exception);
     }
@@ -416,16 +418,19 @@ public class SignupController {
     }
   }
 
-  private void bestEffortRevoke(LoginGrant grant, HttpServletResponse response) {
+  private void bestEffortRevoke(
+      LoginGrant grant, HttpServletResponse response, boolean refreshWriteAttempted) {
     try {
       sessions.revoke(grant);
     } catch (RuntimeException ignored) {
       // Redis TTL bounds an uncertain revocation result.
     }
-    try {
-      http.clearRefresh(response);
-    } catch (RuntimeException ignored) {
-      // Preserve the original publication failure.
+    if (refreshWriteAttempted) {
+      try {
+        http.clearRefresh(response);
+      } catch (RuntimeException ignored) {
+        // Preserve the original publication failure.
+      }
     }
   }
 

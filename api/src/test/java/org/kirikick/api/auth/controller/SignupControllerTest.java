@@ -3,6 +3,9 @@ package org.kirikick.api.auth.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -23,6 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -282,18 +286,18 @@ class SignupControllerTest {
     verify(sessions, never()).login(any());
   }
 
-  @Test
-  void finishFailureAfterGrantRevokesOnlyTheIssuedGrantAndPreservesFailure() throws Exception {
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  @DisplayName("Refresh 발급 전 가입 종료 실패는 grant 폐기 실패와 관계없이 쿠키를 삭제하지 않는다")
+  void finishFailureAfterGrantRevokesOnlyTheIssuedGrantAndPreservesFailure(boolean revokeFails)
+      throws Exception {
+    AuthHttpSupport http = mock(AuthHttpSupport.class);
+    SignupController controller = controllerWith(http);
     UUID userUuid = UUID.randomUUID();
     User member = User.create("민지", null);
     // Completion returns the persisted UUID; use the aggregate UUID in the repository stub.
     userUuid = member.getUuid();
-    LoginGrant grant =
-        new LoginGrant(
-            new LoginSession(
-                "session", 1L, userUuid, NOW, NOW.plusSeconds(900), NOW.plusSeconds(900)),
-            "access-token",
-            "refresh-token");
+    LoginGrant grant = grantFor(userUuid);
     RuntimeException original = new IllegalStateException("finish failed");
     when(claims.claimSignup(any(), any(), any(), any(), any()))
         .thenReturn(RedisFlowClaimGuard.ClaimSignupResult.CLAIMED);
@@ -304,13 +308,106 @@ class SignupControllerTest {
     when(users.findByUuid(userUuid)).thenReturn(Optional.of(member));
     when(sessions.login(member)).thenReturn(grant);
     when(claims.finishSignup(any(), any(), any(), any(), any())).thenThrow(original);
+    if (revokeFails) {
+      willThrow(new IllegalStateException("grant revocation failed")).given(sessions).revoke(grant);
+    }
 
     assertThatThrownBy(() ->
             controller.signup(
                 signupRequest(signupApplicationId), request(), new MockHttpServletResponse()))
         .isSameAs(original);
 
-    verify(sessions).revoke(grant);
+    then(sessions).should().revoke(grant);
+    then(http).should(never()).writeRefresh(any(), any());
+    then(http).should(never()).clearRefresh(any());
+  }
+
+  @Test
+  @DisplayName("Refresh 발급 시도 실패는 grant를 폐기하고 Refresh 쿠키를 삭제한다")
+  void refreshWriteFailureRevokesGrantClearsRefreshAndPreservesWriteFailure() throws Exception {
+    AuthHttpSupport http = mock(AuthHttpSupport.class);
+    SignupController controller = controllerWith(http);
+    User member = User.create("민지", null);
+    LoginGrant grant = grantFor(member.getUuid());
+    RuntimeException original = new IllegalStateException("refresh write failed");
+    given(claims.claimSignup(any(), any(), any(), any(), any()))
+        .willReturn(RedisFlowClaimGuard.ClaimSignupResult.CLAIMED);
+    given(completion.complete(any()))
+        .willReturn(
+            new SignupApplicationCompletionService.CompletionResult(
+                signupApplicationId, member.getUuid(), true));
+    given(users.findByUuid(member.getUuid())).willReturn(Optional.of(member));
+    given(sessions.login(member)).willReturn(grant);
+    given(claims.finishSignup(any(), any(), any(), any(), any()))
+        .willReturn(RedisFlowClaimGuard.FinishSignupResult.FINISHED_CLEANUP_PERMIT);
+    willThrow(original).given(http).writeRefresh(any(), any());
+
+    assertThatThrownBy(() ->
+            controller.signup(
+                signupRequest(signupApplicationId), request(), new MockHttpServletResponse()))
+        .isSameAs(original);
+
+    then(sessions).should().revoke(grant);
+    then(http).should().clearRefresh(any());
+  }
+
+  @Test
+  @DisplayName("Refresh 발급 실패 중 grant 폐기 실패는 원래 실패를 대체하지 않는다")
+  void refreshWriteFailureIsPreservedWhenGrantRevocationFails() throws Exception {
+    AuthHttpSupport http = mock(AuthHttpSupport.class);
+    SignupController controller = controllerWith(http);
+    User member = User.create("민지", null);
+    LoginGrant grant = grantFor(member.getUuid());
+    RuntimeException original = new IllegalStateException("refresh write failed");
+    given(claims.claimSignup(any(), any(), any(), any(), any()))
+        .willReturn(RedisFlowClaimGuard.ClaimSignupResult.CLAIMED);
+    given(completion.complete(any()))
+        .willReturn(
+            new SignupApplicationCompletionService.CompletionResult(
+                signupApplicationId, member.getUuid(), true));
+    given(users.findByUuid(member.getUuid())).willReturn(Optional.of(member));
+    given(sessions.login(member)).willReturn(grant);
+    given(claims.finishSignup(any(), any(), any(), any(), any()))
+        .willReturn(RedisFlowClaimGuard.FinishSignupResult.FINISHED_CLEANUP_PERMIT);
+    willThrow(original).given(http).writeRefresh(any(), any());
+    willThrow(new IllegalStateException("grant revocation failed")).given(sessions).revoke(grant);
+
+    assertThatThrownBy(() ->
+            controller.signup(
+                signupRequest(signupApplicationId), request(), new MockHttpServletResponse()))
+        .isSameAs(original);
+
+    then(http).should().clearRefresh(any());
+  }
+
+  @Test
+  @DisplayName("Refresh 발급 실패 중 쿠키 삭제 실패는 원래 실패를 대체하지 않는다")
+  void refreshWriteFailureIsPreservedWhenRefreshClearFails() throws Exception {
+    AuthHttpSupport http = mock(AuthHttpSupport.class);
+    SignupController controller = controllerWith(http);
+    User member = User.create("민지", null);
+    LoginGrant grant = grantFor(member.getUuid());
+    RuntimeException original = new IllegalStateException("refresh write failed");
+    given(claims.claimSignup(any(), any(), any(), any(), any()))
+        .willReturn(RedisFlowClaimGuard.ClaimSignupResult.CLAIMED);
+    given(completion.complete(any()))
+        .willReturn(
+            new SignupApplicationCompletionService.CompletionResult(
+                signupApplicationId, member.getUuid(), true));
+    given(users.findByUuid(member.getUuid())).willReturn(Optional.of(member));
+    given(sessions.login(member)).willReturn(grant);
+    given(claims.finishSignup(any(), any(), any(), any(), any()))
+        .willReturn(RedisFlowClaimGuard.FinishSignupResult.FINISHED_CLEANUP_PERMIT);
+    willThrow(original).given(http).writeRefresh(any(), any());
+    willThrow(new IllegalStateException("refresh clear failed")).given(http).clearRefresh(any());
+
+    assertThatThrownBy(() ->
+            controller.signup(
+                signupRequest(signupApplicationId), request(), new MockHttpServletResponse()))
+        .isSameAs(original);
+
+    then(sessions).should().revoke(grant);
+    then(http).should().clearRefresh(any());
   }
 
   @Test
@@ -336,6 +433,17 @@ class SignupControllerTest {
         .isEqualTo(AuthErrorCode.AUTH_STATE_UNAVAILABLE);
 
     verify(sessions, never()).login(any());
+  }
+
+  private SignupController controllerWith(AuthHttpSupport http) {
+    return new SignupController(claims, completion, bindings, sessions, users, http, clock);
+  }
+
+  private LoginGrant grantFor(UUID userUuid) {
+    return new LoginGrant(
+        new LoginSession("session", 1L, userUuid, NOW, NOW.plusSeconds(900), NOW.plusSeconds(900)),
+        "access-token",
+        "refresh-token");
   }
 
   private HttpServletRequest request() {
