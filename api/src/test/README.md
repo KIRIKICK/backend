@@ -103,3 +103,19 @@ PostgreSQL `@PostgresJpaTest`는 Flyway를 끄고 Hibernate `create-drop`을 사
 ```sh
 ./gradlew :api:test --tests org.kirikick.api.auth.SignupRefreshCookieFailureIntegrationTest
 ```
+
+## 동일 Refresh 토큰 동시 사용 회귀 (#53)
+
+`RefreshTokenConcurrencyIntegrationTest`는 local OIDC와 Testcontainers의 PostgreSQL·Redis를
+사용해 같은 Refresh 토큰을 두 실제 HTTP 요청으로 보낸다. Redis 회전 호출 직전의 test-only
+latch는 두 handler가 실제 저장소 호출에 도달한 뒤 함께 진행하게 하며, 회전·재사용 결과는
+stub하지 않는다.
+
+테스트는 두 최종 응답의 상태·`Set-Cookie`, family 폐기 뒤 새 Refresh·보호 API 요청, 그리고
+새 OAuth 로그인으로의 복구를 확인한다. captured header를 `CookieManager`에 순서대로 적용한
+검사는 통제된 cookie-jar 모델이며, 실제 브라우저·다중 탭·네트워크 header 도착 순서를
+검증하는 것은 아니다.
+
+```sh
+./gradlew :api:test --tests org.kirikick.api.auth.RefreshTokenConcurrencyIntegrationTest --rerun-tasks
+```
