@@ -141,3 +141,28 @@ R4의 실패 보상·늦은 삭제, R5의 초기 CSRF 응답 경합과는 다른
 ```sh
 ./gradlew :api:test --tests org.kirikick.api.auth.OAuthSuccessResponseOrderIntegrationTest --rerun-tasks
 ```
+
+## 초기 CSRF 발급 응답의 쿠키·본문 토큰 검증 (#59)
+
+`CsrfBootstrapResponseOrderIntegrationTest`는 cookie-free `GET /auth/csrf` 응답 A/B에서 얻은 실제 쿠키·masked 본문 토큰을 사용한다. 새 `CookieManager`에 A→B·B→A 순서로 응답을 적용하고 body A/B를 선택한 네 모델에서 matching과 crossed 조합을 검증한다. raw 쿠키가 서로 다르다는 전제가 성립하지 않으면 crossed fixture를 강행하지 않으며, masked 문자열이 서로 다르다는 사실을 raw 쿠키 회전의 증거로 사용하지 않는다.
+
+교차 Refresh는 403만으로 판단하지 않는다. Refresh 발급이 없고 회전 경계에 진입하지 않으며 grant family가 보존되는지 확인한 뒤, 현재 쿠키로 실제 CSRF 토큰을 다시 얻어 같은 grant가 정상적으로 회전하는지 확인한다. 성공 비교는 서로 다른 grant를 사용해 Refresh 재사용 탐지와 섞이지 않게 한다. 같은 raw 쿠키에서 실제로 다시 얻은 여러 masked 토큰도 각각 유효한지 검증한다.
+
+Refresh 보존 관찰은 Redis에서 다시 읽은 `LoginSession`의 활성·계정·만료 상태와, 이 객체에 투영되지 않는 family hash의 `currentDigest`·`lastUsedAt` 두 필드다. 회전 미진입 및 원래 grant의 후속 성공은 기존 토큰 연결과 사용 가능성을 함께 확인한다. 전체 Redis 데이터나 자연 감소하는 TTL의 동일성을 주장하지 않으며 다른 family를 탐색하지 않는다.
+
+`OAuthBoundaryIntegrationTest`의 한 회귀는 기존 정상 OAuth/signup fixture로 교차 CSRF 요청을 보낸다. claim·completion·login/publication 미진입과 application·proof·claim·onboarding 상태 보존을 확인하고, 현재 쿠키의 토큰을 다시 얻은 뒤 같은 application이 정상 완료되는지 확인한다. 기존 단일 발급·cookie profile·controller·Origin/CORS·replay 검사는 재사용하며, CSRF 재취득 뒤 비허용 Origin을 다시 보내는 별도 실험은 이 범위에 포함하지 않는다.
+
+가입에서는 기존 application의 미완료·회원/identity 수, proof의 slot·proof ID·provider·subject·session 연결, 현재 서버 시점의 `inspectProof=CURRENT` 및 같은 onboarding 쿠키의 context를 확인한다. 이 Redis 결과는 아직 claim되지 않은 유효 proof 상태를 확인하며, 이후 같은 application의 완료·identity 연결·Refresh 발급·onboarding 세션 삭제로 복구를 검증한다. proof 전체 객체나 TTL의 일괄 비교는 하지 않는다.
+
+CookieManager 검사는 캡처한 HTTP 응답의 적용·본문 선택 모델이다. 실제 네트워크의 첫 헤더·본문 도착 순서, 브라우저의 SameSite·cookie 정책, FE 메모리 상태·재시도·UI 복구 또는 운영 사용자 영향을 증명하지 않는다. exact CSRF exception 관찰과 relay·브라우저 검증도 이 테스트의 범위가 아니다.
+
+다음 명령은 `backend` 디렉터리에서 실행한다. Docker와 local OIDC·Testcontainers가 필요하며, 아래 명령은 실행 예시이지 특정 소스 버전의 통과 기록은 아니다.
+
+```sh
+./gradlew :api:test --tests org.kirikick.api.auth.CsrfBootstrapResponseOrderIntegrationTest --rerun-tasks
+./gradlew :api:test --tests org.kirikick.api.auth.OAuthBoundaryIntegrationTest --rerun-tasks
+```
+
+관련 인증 회귀와 전체 검증은 target 실행 뒤에 수행한다. `spotbugsMain`은 `api/main` 바이트코드를 분석하며 신규 테스트 소스를 분석하는 검사가 아니다.
+
+여섯 실행 케이스는 현재 계약을 유지할 회귀 후보다. 결과는 정상 조합 허용·교차 거절·상태 보존·재취득 복구의 **BE/client-model 계약 확인**으로 분류하며 제품 결함이나 FE 복구 성공을 뜻하지 않는다. 별도 결함이 관찰되지 않으면 tests-only PR로 검토한다. 격리 실행·소스 해시 대조·실패 메시지 진단은 일회성 검증 기록으로 구분하며, 실제 실행 시점과 결과는 해당 소스에 대응하는 별도 기록으로 남긴다.
