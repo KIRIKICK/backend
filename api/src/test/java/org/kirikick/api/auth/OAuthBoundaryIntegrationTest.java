@@ -8,6 +8,7 @@ import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -24,6 +25,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -35,6 +37,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -51,6 +54,7 @@ import org.kirikick.api.auth.onboarding.OnboardingSessionProofs;
 import org.kirikick.api.auth.repository.OAuthIdentityRepository;
 import org.kirikick.api.auth.repository.SignupApplicationRepository;
 import org.kirikick.api.auth.service.LoginSessionService;
+import org.kirikick.api.auth.service.SignupApplicationCompletionService;
 import org.kirikick.api.auth.service.SignupApplicationPublicationService;
 import org.kirikick.api.auth.support.AuthTestSettings;
 import org.kirikick.api.auth.support.LocalOidcProvider;
@@ -64,6 +68,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -90,7 +95,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.util.UriComponentsBuilder;
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 @ActiveProfiles("test")
 class OAuthBoundaryIntegrationTest {
 
@@ -105,9 +110,13 @@ class OAuthBoundaryIntegrationTest {
   @Autowired private ObjectMapper json;
   @Autowired private Environment environment;
   @Autowired private AuthProperties authProperties;
+  @Autowired private Clock clock;
   @MockitoSpyBean private RedisFlowClaimGuard flowGuard;
   @MockitoSpyBean private RedisRefreshSessionStore sessionStore;
   @MockitoSpyBean private SignupApplicationPublicationService publications;
+
+  @MockitoSpyBean private SignupApplicationCompletionService completion;
+
   @MockitoSpyBean private LoginSessionService loginSessions;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private CookieSerializer onboardingCookieSerializer;
@@ -298,6 +307,117 @@ class OAuthBoundaryIntegrationTest {
         .hasValueSatisfying(application -> assertThat(application.isCompleted()).isTrue());
     assertThat(signup.getResponse().getCookie("dev-refresh")).isNotNull();
     assertThat(signup.getResponse().getCookie("dev-onboarding")).isNull();
+    assertSessionDeleted(onboarding);
+  }
+
+  @Test
+  @DisplayName("교차된 초기 CSRF 쿠키와 토큰은 가입을 거절하고 현재 쿠키의 토큰 재취득 후 가입할 수 있다")
+  void crossedInitialCsrfArtifactsRejectSignupWithoutMutatingThePendingApplication()
+      throws Exception {
+    OIDC.clearCapturedRequests();
+    OIDC.nextTokenSubject("crossed-initial-csrf-signup-" + UUID.randomUUID());
+    MvcResult callback = complete(startFlow());
+    Cookie onboarding = callback.getResponse().getCookie("dev-onboarding");
+    assertThat(onboarding).isNotNull();
+    UUID applicationId = signupApplicationId(onboarding);
+    String request = signupRequest(applicationId, "교차토큰회원");
+    long membersBefore = users.count();
+    long identitiesBefore = identities.count();
+
+    MvcResult csrfA = mvc.perform(get("/auth/csrf")).andExpect(status().isOk()).andReturn();
+    Cookie csrfCookieA = csrfA.getResponse().getCookie("dev-csrf");
+    MvcResult csrfB = mvc.perform(get("/auth/csrf")).andExpect(status().isOk()).andReturn();
+    Cookie csrfCookieB = csrfB.getResponse().getCookie("dev-csrf");
+    String csrfTokenB =
+        json.readTree(csrfB.getResponse().getContentAsString()).required("token").textValue();
+    assertThat(csrfCookieA).isNotNull();
+    assertThat(csrfCookieB).isNotNull();
+    assertThat(csrfCookieA.getValue())
+        .withFailMessage("Cookie-free CSRF responses must have distinct raw cookies")
+        .isNotEqualTo(csrfCookieB.getValue());
+
+    OnboardingProof proofBefore = onboardingProof(onboarding);
+    reset(flowGuard, publications, completion, loginSessions, sessionStore);
+
+    mvc.perform(
+            post("/auth/signup")
+                .cookie(onboarding, csrfCookieA)
+                .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                .header("X-XSRF-TOKEN", csrfTokenB)
+                .contentType("application/json")
+                .content(request))
+        .andExpect(status().isForbidden())
+        .andExpect(result ->
+            assertThat(result.getResponse().getCookie("dev-refresh"))
+                .withFailMessage("CSRF rejection must not issue a Refresh cookie")
+                .isNull());
+
+    assertThat(users.count()).isEqualTo(membersBefore);
+    assertThat(identities.count()).isEqualTo(identitiesBefore);
+    assertThat(applications.findById(applicationId))
+        .hasValueSatisfying(application -> assertThat(application.isCompleted()).isFalse());
+    assertThat(invocationCount(flowGuard, "claimSignup")).isZero();
+    assertThat(invocationCount(completion, "complete")).isZero();
+    assertThat(invocationCount(publications, "publish")).isZero();
+    assertThat(invocationCount(loginSessions, "login")).isZero();
+
+    OnboardingProof proofAfter = onboardingProof(onboarding);
+    assertThat(proofAfter)
+        .extracting(
+            OnboardingProof::slotId,
+            OnboardingProof::proofId,
+            OnboardingProof::provider,
+            OnboardingProof::subject,
+            OnboardingProof::sessionId)
+        .withFailMessage("CSRF rejection must preserve the proof identity and session binding")
+        .containsExactly(
+            proofBefore.slotId(),
+            proofBefore.proofId(),
+            proofBefore.provider(),
+            proofBefore.subject(),
+            proofBefore.sessionId());
+    assertThat(
+            flowGuard.inspectProof(
+                proofAfter.slotId(), proofAfter.proofId(), proofAfter.expiresAt(), clock.instant()))
+        .isEqualTo(RedisFlowClaimGuard.InspectProofResult.CURRENT);
+    assertThat(signupApplicationId(onboarding))
+        .withFailMessage("CSRF rejection must retain the same signup application")
+        .isEqualTo(applicationId);
+
+    MvcResult currentCsrf =
+        mvc.perform(get("/auth/csrf").cookie(onboarding, csrfCookieA))
+            .andExpect(status().isOk())
+            .andReturn();
+    String currentCsrfToken =
+        json.readTree(currentCsrf.getResponse().getContentAsString()).required("token").textValue();
+    MvcResult signup =
+        mvc.perform(
+                post("/auth/signup")
+                    .cookie(onboarding, csrfCookieA)
+                    .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                    .header("X-XSRF-TOKEN", currentCsrfToken)
+                    .contentType("application/json")
+                    .content(request))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.accessToken").isNotEmpty())
+            .andReturn();
+
+    assertThat(users.count()).isEqualTo(membersBefore + 1);
+    assertThat(identities.count()).isEqualTo(identitiesBefore + 1);
+    var completedApplication = applications.findById(applicationId).orElseThrow();
+    assertThat(completedApplication.isCompleted()).isTrue();
+    assertThat(completedApplication.getCompletedUserId()).isNotNull();
+    OAuthIdentity completedIdentity =
+        identities
+            .findByProviderAndProviderSubject(OAuthProvider.KAKAO, proofAfter.subject())
+            .orElseThrow();
+    assertThat(completedApplication.getCompletedUserId())
+        .withFailMessage("The recovered application must complete for its OAuth identity")
+        .isEqualTo(completedIdentity.getUserId());
+    assertThat(signup.getResponse().getCookie("dev-refresh")).isNotNull();
+    assertThat(signup.getResponse().getCookie("dev-onboarding"))
+        .withFailMessage("Completed signup must not retain an onboarding response cookie")
+        .isNull();
     assertSessionDeleted(onboarding);
   }
 
@@ -820,9 +940,36 @@ class OAuthBoundaryIntegrationTest {
   private void assertSessionDeleted(Cookie cookie) {
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setCookies(cookie);
-    assertThat(onboardingCookieSerializer.readCookieValues(request))
-        .singleElement()
-        .satisfies(sessionId -> assertThat(sessionRepository.findById(sessionId)).isNull());
+    List<String> sessionIds = onboardingCookieSerializer.readCookieValues(request);
+    assertThat(sessionIds.size()).isEqualTo(1);
+    assertThat(sessionRepository.findById(sessionIds.getFirst()))
+        .withFailMessage("Completed flow must remove its onboarding session")
+        .isNull();
+  }
+
+  private OnboardingProof onboardingProof(Cookie cookie) {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setCookies(cookie);
+    List<String> sessionIds = onboardingCookieSerializer.readCookieValues(request);
+    if (sessionIds.size() != 1) {
+      throw new IllegalStateException("Expected exactly one onboarding session");
+    }
+    Session session = sessionRepository.findById(sessionIds.getFirst());
+    if (session == null) {
+      throw new IllegalStateException("Expected an onboarding session");
+    }
+    return session.getAttributeNames().stream()
+        .map(session::getAttribute)
+        .filter(OnboardingProof.class::isInstance)
+        .map(OnboardingProof.class::cast)
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("Expected an onboarding proof"));
+  }
+
+  private static long invocationCount(Object mock, String methodName) {
+    return mockingDetails(mock).getInvocations().stream()
+        .filter(invocation -> invocation.getMethod().getName().equals(methodName))
+        .count();
   }
 
   private StartedFlow startFlow() throws Exception {
