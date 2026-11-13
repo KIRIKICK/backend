@@ -357,6 +357,9 @@ class UserAuthSchemaMigrationTest {
     Flyway flyway =
         Flyway.configure()
             .dataSource(url, username, password)
+            // This test owns the exact V1/V2 user/auth contract; later migrations have separate
+            // tests.
+            .target("2")
             .schemas(schema)
             .defaultSchema(schema)
             .createSchemas(true)
