@@ -90,21 +90,35 @@ OAuth/가입 temporary session은 HTTPS에서 `__Host-onboarding`, Secure, HttpO
 
 OAuth permission deadline은 10분, signup proof deadline은 5분이다. Spring Session idle timeout은 각각 10분·5분이며 context/CSRF 조회가 permission deadline을 연장하지 않는다. OAuth 시작과 OAuth→proof 전환은 기존 Session ID를 rotate하거나 attribute를 복사하지 않고, slot ID만 전달한 genuinely fresh Session을 만든다. Spring Security의 일반 session-fixation rotation은 이 명시적 lifecycle·binding과 충돌하므로 OAuth 흐름에는 적용하지 않는다. 한 브라우저에는 하나의 in-flight flow만 유지한다.
 
+## R1–R5 경합 변경 요약
+
+세부 fixture·assertion은 테스트 [README](../../api/src/test/README.md)에 둔다. 아래 링크의 과거 이슈/PR은 당시 소스·검증 기록의 근거이며, 현재 실행 결과가 아니다.
+
+| 항목 | 현재 범위 | 근거·상세 |
+| --- | --- | --- |
+| R1 | **제품 완화:** onboarding serializer는 정확히 빈 문자열(`""`) 쓰기만 Max-Age와 무관하게 억제하고, 비어 있지 않은 `Max-Age=0`은 기본 serializer에 위임한다. 물리 cookie 잔존은 권한이 아니다. | [#48](https://github.com/KIRIKICK/backend/issues/48)·[#49](https://github.com/KIRIKICK/backend/pull/49) |
+| R2 | **tests-only:** 같은/다른 계정의 네 cookie-application 모델과 다른 계정의 local relay 전달을 확인한다. 브라우저 동작이나 로그인 승자 정책을 정하지 않는다. | [#55](https://github.com/KIRIKICK/backend/issues/55)·[#56](https://github.com/KIRIKICK/backend/pull/56), [OAuth 성공 응답의 쿠키 적용·전달 순서 선행 검증](../../api/src/test/README.md#oauth-성공-응답의-쿠키-적용전달-순서-선행-검증-55) |
+| R3 | **tests-only:** 같은 Refresh의 실제 HTTP 동시 요청에서 재사용 탐지·family 폐기로 200 승자의 successor Refresh·Access도 후속 요청에서 거절됨을 확인한다. 새 OAuth 재로그인 복구도 확인한다. `CookieManager` 모델은 실제 첫 헤더 도착 순서·browser·다중 탭을 증명하지 않는다. 2026-11-13 KST 확인: [#53](https://github.com/KIRIKICK/backend/issues/53)은 OPEN, BE [PR #54](https://github.com/KIRIKICK/backend/pull/54)는 merged이고 공개 FE 구현·배포·일정·browser 완료 근거는 미확인이다. | [이전 댓글](https://github.com/KIRIKICK/backend/issues/53#issuecomment-6790432549), [동일 Refresh 토큰 동시 사용 회귀](../../api/src/test/README.md#동일-refresh-토큰-동시-사용-회귀-53) |
+| R4 | **제품 완화:** 가입 grant 반환 뒤 Refresh 발급 호출 시도 전 `RuntimeException`은 삭제 cookie 없이 best-effort 보상한다. `TokenResponse` 반환 이후 직렬화·filter·transport 실패는 catch 밖이며, 호출 시도 후 보상도 best-effort다. | [#50](https://github.com/KIRIKICK/backend/issues/50)·[#51](https://github.com/KIRIKICK/backend/issues/51)·[#52](https://github.com/KIRIKICK/backend/pull/52), [Signup Refresh 발급 시도 전 실패 회귀](../../api/src/test/README.md#signup-refresh-발급-시도-전-실패-회귀-50-51) |
+| R5 | **tests-only:** 실제 A/B raw-cookie·masked-body 모델, 교차 거절/미진입/제한적 보존·재취득 복구, 같은 raw의 복수 mask를 확인한다. Refresh는 실제 HTTP이고 signup은 MockMvc이며, Redis 전체·TTL·브라우저·FE를 주장하지 않는다. | [#59](https://github.com/KIRIKICK/backend/issues/59)·[#60](https://github.com/KIRIKICK/backend/pull/60), [초기 CSRF 발급 응답의 쿠키·본문 토큰 검증](../../api/src/test/README.md#초기-csrf-발급-응답의-쿠키본문-토큰-검증-59) |
+
+README와 현재 소스는 BE/client-model 경계를 설명한다. 테스트·머지·CI/CD 성공은 [배포 전 외부 검증](#배포-전-외부-검증)의 각 요구사항을 대체하지 않는다. 외부 검증의 완료 근거 미확인은 실패·위반 또는 승인·면제를 뜻하지 않는다.
+
 ### 늦은 onboarding 만료 응답
 
-정상 종료한 OAuth·가입 흐름은 기존 flow/claim 검증에 따라 서버 Session을 무효화한다. 다만 같은 onboarding cookie key의 오래된 삭제 응답이 새 흐름의 쿠키를 지우는 것을 막기 위해, onboarding serializer는 빈 값 만료 cookie를 쓰지 않는다. 이 변경은 서버 Session 삭제·TTL·flow 종료나 Refresh·CSRF cookie 정책을 바꾸지 않는다.
+정상 종료한 OAuth·가입 흐름은 기존 flow/claim 검증에 따라 서버 Session을 무효화한다. 다만 같은 onboarding cookie key의 오래된 삭제 응답이 새 흐름의 쿠키를 지우는 것을 막기 위해, onboarding serializer는 정확히 빈 문자열(`""`)인 쿠키 값 쓰기를 Max-Age와 무관하게 억제한다. 값이 비어 있지 않으면 `Max-Age=0` 쓰기를 포함해 기본 serializer에 위임한다. 이 변경은 서버 Session 삭제·TTL·flow 종료나 Refresh·CSRF cookie 정책을 바꾸지 않는다.
 
 따라서 종료된 Session ID가 브라우저에 물리적으로 남을 수 있다. ID만으로는 Session·가입 proof·인증 권한을 복원할 수 없고, 서버는 없는 Session 또는 binding이 맞지 않는 proof를 거절한다. 새 OAuth 시작은 새 Session/cookie를 발급해 복구한다.
 
 이 완화는 늦은 **삭제** 응답만 다룬다. 정상 cookie 발급 응답 간 순서 역전, Refresh 동시 사용, signup 실패의 Refresh 삭제, 초기 CSRF 응답 경합과 BUSY 정책은 별도 문제다. 혼합 배포 중 이전 인스턴스나 이미 대기 중인 삭제 응답에는 기존 위험이 남고, rollback하면 이 완화도 사라진다.
 
-signup claim은 DB 작업을 수락하는 원자적 경계다. live 5분 lease 동안에는 새 OAuth 시작이 `BUSY`이며 수락된 가입을 취소하지 않는다. lease가 만료되면 final publication은 fail-closed이며 새 시작만 가능하다. DB commit은 취소하지 않는다. commit 뒤 로그인 Session 생성·claim 종료·proof Session 삭제·cookie/JWT 응답 중 하나라도 실패하면 발급된 grant를 best-effort revoke하고 성공을 publish하지 않는다. revoke 또는 transport 결과가 불확실하면 TTL-bounded residual state가 남을 수 있으나, 문서는 부재·cookie 전달·응답 순서를 보장하지 않는다.
+signup claim은 DB 작업을 수락하는 원자적 경계다. live 5분 lease 동안에는 새 OAuth 시작이 `BUSY`이며 수락된 가입을 취소하지 않는다. lease가 만료되면 final publication은 fail-closed이며 새 시작만 가능하다. DB commit은 취소하지 않는다. commit 뒤 로그인 grant 발급·claim 종료·proof Session 정리·Refresh 쓰기·`TokenResponse` 생성을 수행하는 `SignupController.signup()`의 `try/catch`는 해당 블록에서 발생한 `RuntimeException`만 관찰한다. 반환받은 grant가 있으면 best-effort revoke를 시도하고, 없으면 claim 종료·proof 정리를 best-effort로 시도한 뒤 오류를 전달한다. `TokenResponse` 반환 이후의 직렬화·필터 후처리·전송 실패는 이 catch의 관찰 범위 밖이며, 해당 실패까지 grant 보상한다고 보장하지 않는다. revoke 또는 transport 결과가 불확실하면 TTL-bounded state가 남을 수 있으며, 이 처리는 상태의 즉시 부재·cookie 전달·응답 순서를 보장하지 않는다.
 
 ### 가입 Refresh 발급 시도 전 실패
 
-가입에서 `writeRefresh` 호출을 시도하기 전에 실패하면, A 본인 grant의 폐기는 항상 시도하되 Refresh 삭제 쿠키는 보내지 않는다. 따라서 늦은 A 실패 응답이 새 로그인 B나 기존 유효 로그인 C의 쿠키를 지우지 않는다. 다른 계정의 기존 로그인도 유지하며 실패한 가입을 계정 전환 성공으로 취급하지 않는다. 폐기 실패는 원래 오류를 가리지 않고 기존 TTL에 의존하는 잔여 위험을 남긴다.
+가입에서 grant를 반환받은 뒤 위 블록에서 `writeRefresh` 호출을 시도하기 전에 `RuntimeException`이 발생하면, A 본인 grant의 폐기는 항상 시도하되 Refresh 삭제 쿠키는 보내지 않는다. 따라서 늦은 A 실패 응답이 새 로그인 B나 기존 유효 로그인 C의 쿠키를 지우지 않는다. 다른 계정의 기존 로그인도 유지하며 실패한 가입을 계정 전환 성공으로 취급하지 않는다. 폐기 실패는 원래 오류를 가리지 않고 기존 TTL에 의존하는 잔여 위험을 남긴다.
 
-호출 시도 여부는 쿠키 헤더 추가·클라이언트 전달 성공과 다르다. 호출 시도 이후 실패의 기존 폐기·삭제 보상과 OAuth 보상은 유지하므로 부분 쓰기·불명확한 전달·늦은 삭제 경합은 남는다. 이 변경은 R4의 호출 시도 전 실패만 완화하며 R2·R3·R5나 기존 401 오류 처리를 변경하지 않는다. 이전 버전의 대기 응답·혼합 배포·rollback에는 기존 위험이 남는다.
+호출 시도 여부는 쿠키 헤더 추가·commit·클라이언트 수신과 다르다. 위 catch가 관찰한 호출 시도 이후 실패에서는 grant 폐기·Refresh 삭제를 각각 best-effort로 시도하며, `clearRefresh()` 호출만으로 최종 삭제 헤더의 보존·전달·적용을 보장하지 않는다. 따라서 부분 쓰기·불명확한 전달·늦은 삭제 경합은 미검증 잔여 위험이며, OAuth 보상은 변경하지 않는다. 이 변경은 R4의 호출 시도 전 실패만 완화하며 R2·R3·R5나 기존 401 오류 처리를 변경하지 않는다. 이전 버전의 대기 응답·혼합 배포·rollback에는 기존 위험이 남는다.
 
 ## Stale OAuth completion recovery
 
