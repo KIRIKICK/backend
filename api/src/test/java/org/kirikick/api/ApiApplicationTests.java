@@ -34,7 +34,11 @@ class ApiApplicationTests {
   @Autowired private EntityManagerFactory entityManagerFactory;
 
   @Test
-  void contextLoads() {}
+  void contextLoads() {
+    assertThat(entityManagerFactory.getMetamodel().getEntities())
+        .noneMatch(
+            entity -> entity.getJavaType().getPackageName().startsWith("org.kirikick.spike"));
+  }
 
   @Test
   void appliesTheDefaultBatchFetchSize() {
