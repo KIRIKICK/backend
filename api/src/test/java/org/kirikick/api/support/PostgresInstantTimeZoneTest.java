@@ -11,6 +11,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.domain.SignupApplication;
+import org.kirikick.api.game.domain.Game;
+import org.kirikick.api.room.domain.Room;
 import org.kirikick.api.user.domain.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -22,7 +24,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @JpaSliceTest
 @ActiveProfiles("test")
 // Other tests define probe entities with no Flyway migrations.
-@EntityScan(basePackageClasses = {SignupApplication.class, User.class})
+@EntityScan(basePackageClasses = {SignupApplication.class, User.class, Room.class, Game.class})
 class PostgresInstantTimeZoneTest {
 
   private static final Instant ISSUED_AT = Instant.parse("2030-01-02T00:15:30.123456Z");

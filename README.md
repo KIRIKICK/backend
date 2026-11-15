@@ -25,6 +25,7 @@ backend/
 
 - [USER: 회원 프로필](docs/domain/user.md)
 - [AUTH: 인증 상태·Redis 운영 정책](docs/domain/auth.md)
+- [ROOM/GAME: 방·킥·참여·답변 최소 저장 기반](docs/domain/game-persistence.md)
 
 ## DEV 배포
 
