@@ -21,6 +21,7 @@ import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -48,6 +49,7 @@ class GameSchemaMigrationTest {
   }
 
   @Test
+  @DisplayName("V2에서 V3로 마이그레이션해도 기존 회원이 유지되고 엔티티 매핑과 저장이 정상 동작한다")
   void upgradesExistingUsersAndValidatesAllProductionMappings() throws SQLException {
     migrate("2");
     long userId;
@@ -73,6 +75,7 @@ class GameSchemaMigrationTest {
   }
 
   @Test
+  @DisplayName("같은 게임의 중복 참여와 참여자별 중복 답변을 허용하지 않는다")
   void enforcesParticipantAndAnswerUniqueness() throws SQLException {
     migrate("3");
     try (Connection connection = connection()) {
@@ -90,6 +93,7 @@ class GameSchemaMigrationTest {
   }
 
   @Test
+  @DisplayName("다른 게임의 참여자 참조와 존재하지 않는 참조를 거부하고 관련 기록의 삭제를 제한한다")
   void rejectsCrossGameReferencesMissingParentsAndCascadingHistoryLoss() throws SQLException {
     migrate("3");
     try (Connection connection = connection()) {
@@ -108,6 +112,7 @@ class GameSchemaMigrationTest {
   }
 
   @Test
+  @DisplayName("허용되지 않은 게임 값, 공백 방 이름, 잘못된 답변 형식과 자기 투표를 거부한다")
   void rejectsInvalidEnumsEmptyNamesAndAmbiguousOrSelfAnswers() throws SQLException {
     migrate("3");
     try (Connection connection = connection()) {
@@ -126,6 +131,7 @@ class GameSchemaMigrationTest {
   }
 
   @ParameterizedTest
+  @DisplayName("참여 또는 답변을 동시에 중복 저장하면 한 건만 성공한다")
   @ValueSource(booleans = {false, true})
   void concurrentWritersCannotDuplicateParticipationOrAnswer(boolean answer) throws Exception {
     migrate("3");

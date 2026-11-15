@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.game.domain.Game;
 import org.kirikick.api.game.domain.GameAnswer;
@@ -33,6 +34,7 @@ class GameRepositoriesTest {
   @Autowired private EntityManager entityManager;
 
   @Test
+  @DisplayName("방, 게임, 참여자와 선택지 답변을 저장한 뒤 식별자로 다시 조회할 수 있다")
   void reloadsRoomGameParticipationAndOptionAnswerByPublicAndInternalKeys() {
     User user = users.save(User.create("출제자", null));
     User member = users.save(User.create("친구", null));
@@ -82,6 +84,7 @@ class GameRepositoriesTest {
   }
 
   @Test
+  @DisplayName("같은 회원이 여러 게임에 참여해도 참여자와 투표 답변은 게임별로 조회된다")
   void scopesRostersAndVotesToOneGameIncludingTheSameUserInDifferentGames() {
     User first = users.save(User.create("첫째", null));
     User second = users.save(User.create("둘째", null));
@@ -116,6 +119,7 @@ class GameRepositoriesTest {
   }
 
   @Test
+  @DisplayName("존재하지 않는 식별자로 조회하면 빈 결과를 반환한다")
   void unknownIdentitiesAndUnansweredParticipantsReturnEmpty() {
     UUID missing = UUID.randomUUID();
     assertThat(rooms.findByUuid(missing)).isEmpty();
