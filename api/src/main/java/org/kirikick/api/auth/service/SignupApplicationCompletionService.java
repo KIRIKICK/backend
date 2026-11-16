@@ -3,6 +3,7 @@ package org.kirikick.api.auth.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
@@ -18,23 +19,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class SignupApplicationCompletionService {
 
   private final SignupApplicationRepository applications;
   private final UserRepository users;
   private final OAuthIdentityRepository identities;
   private final Clock clock;
-
-  public SignupApplicationCompletionService(
-      SignupApplicationRepository applications,
-      UserRepository users,
-      OAuthIdentityRepository identities,
-      Clock clock) {
-    this.applications = applications;
-    this.users = users;
-    this.identities = identities;
-    this.clock = clock;
-  }
 
   @Transactional
   public CompletionResult complete(CompletionCommand command) {
