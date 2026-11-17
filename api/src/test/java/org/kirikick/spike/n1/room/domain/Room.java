@@ -39,6 +39,9 @@ public class Room extends BaseCreatedTimeEntity {
   @Column(name = "opened_at")
   private Instant openedAt;
 
+  @Column(name = "confirmed_early_end_at")
+  private Instant confirmedEarlyEndAt;
+
   private Room(User host, RewardPreset selectedRewardPreset) {
     if (host == null || selectedRewardPreset == null) {
       throw new IllegalArgumentException("방장과 선택 보상이 필요합니다.");

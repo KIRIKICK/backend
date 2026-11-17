@@ -90,7 +90,8 @@ class N1SchemaMigrationTest {
                   "selected_reward_preset_id", new ColumnDefinition("bigint", false, null, false),
                   "created_at",
                       new ColumnDefinition("timestamp with time zone", false, null, false),
-                  "opened_at",
+                  "opened_at", new ColumnDefinition("timestamp with time zone", true, null, false),
+                  "confirmed_early_end_at",
                       new ColumnDefinition("timestamp with time zone", true, null, false)));
       assertThat(columns(connection, "games"))
           .containsExactlyInAnyOrderEntriesOf(

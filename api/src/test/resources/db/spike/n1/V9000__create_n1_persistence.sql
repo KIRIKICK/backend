@@ -11,6 +11,7 @@ create table rooms (
     selected_reward_preset_id bigint not null,
     created_at timestamp with time zone not null,
     opened_at timestamp with time zone,
+    confirmed_early_end_at timestamp with time zone,
     constraint fk_rooms_host_user
         foreign key (host_user_id) references users (id) on delete no action,
     constraint fk_rooms_selected_reward_preset
