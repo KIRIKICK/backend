@@ -3,13 +3,13 @@
 ## 로컬 N1 스파이크 격리
 
 - N1 실험 타입과 테스트는 `org.kirikick.spike`에만 두어 제품 `org.kirikick.api` 자동 스캔에서 제외한다. 스파이크 JPA 테스트는 `N1JpaTestConfiguration`으로만 명시적으로 스캔한다.
-- 기본 제품 migration 위치 `db/migration`에는 V1·V2만 있다. N1 검증은 test 전용 `db/spike`의 V9000을 추가한다.
+- 기본 제품 migration 위치 `db/migration`에는 V1·V2만 있다. N1 검증은 test 전용 `db/spike/n1`의 V9000을 추가하고, publication 검증은 `db/spike/n1`의 V9000과 `db/spike/publication`의 V9001을 추가한다.
 - `UserAuthSchemaMigrationTest`는 V1·V2 및 AUTH/USER만 검증한다. N1의 컬럼·FK·초기 보상·V2 데이터 보존·JPA 매핑 검증은 `org.kirikick.spike.n1.N1SchemaMigrationTest`에서 V9000을 명시 로드해 수행한다.
-- 기존 V3 파일은 SQL 내용 변경 없이 V9000으로 이름만 바꿨다. 이미 V3가 적용된 DB에는 이 변경을 자동 적용하지 않는다. migration 누락 검증 오류나 DDL 중복 실행 가능성을 별도로 확인해야 하며, 이력 삭제·수정으로 우회하지 않는다. 실제 DB 이력은 확인하지 않았다.
 
 ```sh
 ./gradlew :api:test --tests 'org.kirikick.spike.n1.*'
 ./gradlew :api:test --tests org.kirikick.spike.n1.N1SchemaMigrationTest
+./gradlew :api:test --tests org.kirikick.spike.publication.PublicationAttemptSpikePostgresTest
 ./gradlew :api:test --tests org.kirikick.api.support.UserAuthSchemaMigrationTest --tests org.kirikick.api.support.ProductArtifactIsolationTest
 ```
 
