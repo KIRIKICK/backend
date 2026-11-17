@@ -286,7 +286,7 @@ class N1SchemaMigrationTest {
             .createSchemas(true)
             .cleanDisabled(true)
             // Only this spike schema opts into V9000; product migrations remain separate.
-            .locations("classpath:db/migration", "classpath:db/spike")
+            .locations("classpath:db/migration", "classpath:db/spike/n1")
             .load();
     return flyway;
   }
