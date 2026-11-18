@@ -205,6 +205,7 @@ class PublicationGenerationLockSpikePostgresTest {
       throw failure;
     }
     try {
+      verifyCompletedContenderGuard();
       Seed seed = seed("S1");
       Map<String, Object> baseline = baseline(seed, "S1");
       compete(seed, baseline);
@@ -313,6 +314,8 @@ class PublicationGenerationLockSpikePostgresTest {
                             return created;
                           })));
       Paused paused = resultOf(aReady);
+      // Both observations share a budget starting before B can use its 10s lock timeout.
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
       Future<Recheck> b =
           workers.submit(() ->
               publishFailure(
@@ -352,11 +355,10 @@ class PublicationGenerationLockSpikePostgresTest {
                             return recheck(current);
                           })));
       TxId waiting = resultOf(bReady);
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
       tx(
           "S1.wait observer",
           () -> {
-            observeBlocking(paused, waiting, a, b, deadline);
+            observeBlocking("WAIT", paused, waiting, a, b, deadline);
             Footprint invisible = footprint(seed.user());
             invariant(
                 only(keyRows(seed)).equals(baseline) && invisible.equals(EMPTY),
@@ -364,10 +366,22 @@ class PublicationGenerationLockSpikePostgresTest {
             System.out.printf("GEN S1 PRECOMMIT scoped=%s unchanged=true%n", invisible);
             return null;
           });
-      permitCas.set(true);
+      tx(
+          "S1.pre-CAS observer",
+          () -> {
+            observeBlocking("PRE_CAS_WAIT", paused, waiting, a, b, deadline);
+            return null;
+          });
+      // shortcut: B can still time out after this check; its post-commit result remains mandatory.
+      authorizeCas(permitCas, a, b, deadline);
       release.countDown();
       Business committed = resultOf(a);
-      Recheck observed = resultOf(b);
+      Recheck observed;
+      try {
+        observed = resultOf(b);
+      } catch (Exception failure) {
+        throw new Finding("INCONCLUSIVE", "B could not confirm recheck after A committed", failure);
+      }
       tx(
           "S1.final observer",
           () -> {
@@ -394,8 +408,53 @@ class PublicationGenerationLockSpikePostgresTest {
     }
   }
 
+  private static void verifyCompletedContenderGuard() {
+    var permit = new AtomicBoolean();
+    var timeout = new SQLException("injected B lock timeout", "55P03");
+    var failure =
+        assertThrowsExactly(
+            Finding.class,
+            () ->
+                authorizeCas(
+                    permit,
+                    new CompletableFuture<>(),
+                    CompletableFuture.failedFuture(timeout),
+                    System.nanoTime() + TimeUnit.SECONDS.toNanos(5)));
+    assertThat(permit).isFalse();
+    assertThat(failure.getCause()).isSameAs(timeout);
+    assertThat(verdict(failure)).isEqualTo("INCONCLUSIVE");
+    assertThat(sqlState(failure)).isEqualTo("55P03");
+    System.out.println("GEN S1 GUARD_PROBE injectedSqlState=55P03 casPermitted=false");
+  }
+
+  private static void authorizeCas(AtomicBoolean permit, Future<?> a, Future<?> b, long deadline) {
+    requirePendingWorkers(a, b);
+    observe(System.nanoTime() < deadline, "5s watchdog exhausted before CAS permission");
+    permit.set(true);
+  }
+
+  private static void requirePendingWorkers(Future<?> a, Future<?> b) {
+    boolean bDone = b.isDone();
+    if (!bDone && !a.isDone()) {
+      return;
+    }
+    Future<?> completed = bDone ? b : a;
+    String reason = (bDone ? "B" : "A") + " finished before CAS permission";
+    try {
+      resultOf(completed);
+    } catch (Exception failure) {
+      throw new Finding(verdict(failure), reason, failure);
+    }
+    throw new Finding("INCONCLUSIVE", reason);
+  }
+
   private void observeBlocking(
-      Paused owner, TxId waiting, Future<Business> a, Future<Recheck> b, long deadline) {
+      String phase,
+      Paused owner,
+      TxId waiting,
+      Future<Business> a,
+      Future<Recheck> b,
+      long deadline) {
     TxId observer = jdbcIdentity();
     observe(
         Set.of(owner.tx().pid(), waiting.pid(), observer.pid()).size() == 3
@@ -403,21 +462,14 @@ class PublicationGenerationLockSpikePostgresTest {
         "A, B, observer did not have three independent backends and transactions");
     var pool = (HikariDataSource) dataSource;
     while (System.nanoTime() < deadline) {
-      if (a.isDone() || b.isDone()) {
-        Future<?> completed = a.isDone() ? a : b;
-        try {
-          resultOf(completed);
-        } catch (Exception failure) {
-          throw new Finding("INCONCLUSIVE", "worker finished before wait observation", failure);
-        }
-        throw new Finding("INCONCLUSIVE", "worker finished without observing blocked SQL");
-      }
+      requirePendingWorkers(a, b);
       jdbc.execute("select pg_stat_clear_snapshot()");
       List<Map<String, Object>> samples =
           jdbc.queryForList(
               """
               select a.xact_start owner_start, a.backend_xid::text owner_xid, a.state owner_state,
                      b.wait_event_type, b.wait_event, b.query, pg_blocking_pids(b.pid)::text blockers,
+                     b.query_start, clock_timestamp() sampled_at,
                      ?=any(pg_blocking_pids(b.pid)) blocked
               from pg_stat_activity a cross join pg_stat_activity b
               where a.pid=? and b.pid=?
@@ -435,19 +487,30 @@ class PublicationGenerationLockSpikePostgresTest {
           && System.nanoTime() < deadline) {
         OpenTx live = new OpenTx(instant(w.get("owner_start")), (String) w.get("owner_xid"));
         observe(
-            owner.active().equals(live) && !a.isDone() && !b.isDone(),
+            owner.active().equals(live),
             "blocking A is not the same still-open generation transaction");
+        requirePendingWorkers(a, b);
         int active = pool.getHikariPoolMXBean().getActiveConnections();
         if (active < 3) {
           throw new Finding("BLOCKED", "pool cannot evidence three simultaneous connections");
         }
         System.out.printf(
-            "GEN S1 WAIT A=%s B=%s O=%s poolActive=%d poolMax=%d created=%s sample=%s%n",
-            owner.tx(), waiting, observer, active, pool.getMaximumPoolSize(), owner.created(), w);
+            "GEN S1 %s A=%s B=%s O=%s poolActive=%d poolMax=%d watchdogLeftMs=%d created=%s sample=%s%n",
+            phase,
+            owner.tx(),
+            waiting,
+            observer,
+            active,
+            pool.getMaximumPoolSize(),
+            TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()),
+            owner.created(),
+            w);
         return;
       }
     }
-    throw new Finding("INCONCLUSIVE", "5s watchdog: no matching PostgreSQL row-lock wait");
+    requirePendingWorkers(a, b);
+    throw new Finding(
+        "INCONCLUSIVE", "5s watchdog: no matching PostgreSQL row-lock wait: " + phase);
   }
 
   private Recheck recheck(Map<String, Object> current) {
@@ -855,7 +918,7 @@ class PublicationGenerationLockSpikePostgresTest {
 
   private static String verdict(Throwable failure) {
     for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-      if (cause instanceof Finding finding && !"INCONCLUSIVE".equals(finding.verdict)) {
+      if (cause instanceof Finding finding) {
         return finding.verdict;
       }
       if (cause instanceof CannotCreateTransactionException
