@@ -32,7 +32,7 @@ tasks.named('spotbugsMain') {
 
 dependencies {
 	spotbugs "com.github.spotbugs:spotbugs:${project.spotbugs.toolVersion.get()}"
-	spotbugs 'org.apache.commons:commons-lang3:3.21.0'
+	spotbugs 'org.apache.commons:commons-lang3:3.22.0'
 	add('spotbugsAux', 'org.jetbrains:annotations:26.1.0')
 
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
