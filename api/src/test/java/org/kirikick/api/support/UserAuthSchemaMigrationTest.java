@@ -399,6 +399,7 @@ class UserAuthSchemaMigrationTest {
             .createSchemas(true)
             .cleanDisabled(true)
             .locations("classpath:db/migration")
+            .target("2")
             .load();
     return flyway;
   }
