@@ -49,7 +49,8 @@ class GameAssemblyServicePostgresTest extends GameAssemblyContract {
     registry.add("spring.flyway.enabled", () -> true);
     registry.add("spring.flyway.schemas", () -> SCHEMA);
     registry.add("spring.flyway.default-schema", () -> SCHEMA);
-    registry.add("spring.flyway.locations", () -> "classpath:db/migration,classpath:db/spike/n1");
+    registry.add(
+        "spring.flyway.locations", () -> "classpath:db/spike/baseline,classpath:db/spike/n1");
     registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
     registry.add(

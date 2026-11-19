@@ -167,7 +167,7 @@ class PublicationSingleTransactionExpirySweepSpikePostgresTest {
     registry.add(
         "spring.flyway.locations",
         () ->
-            "classpath:db/migration,classpath:db/spike/n1,classpath:db/spike/publication-single-transaction");
+            "classpath:db/spike/baseline,classpath:db/spike/n1,classpath:db/spike/publication-single-transaction");
     registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
     registry.add(

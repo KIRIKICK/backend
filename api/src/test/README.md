@@ -3,7 +3,7 @@
 ## 로컬 N1 스파이크 격리
 
 - N1 실험 타입과 테스트는 `org.kirikick.spike`에만 두어 제품 `org.kirikick.api` 자동 스캔에서 제외한다. 스파이크 JPA 테스트는 `N1JpaTestConfiguration`으로만 명시적으로 스캔한다.
-- 기본 제품 migration 위치 `db/migration`에는 V1·V2만 있다. N1 검증은 test 전용 `db/spike/n1`의 V9000을 추가하고, publication 검증은 `db/spike/n1`의 V9000과 `db/spike/publication`의 V9001을 추가한다.
+- 기본 제품 migration 위치는 `db/migration`(V1~V4)이다. 기존 스파이크는 `processTestResources`가 V1·V2만 복사한 test 전용 `db/spike/baseline`에 각 V900x 위치를 더한다. 제품 V3/V4와 스파이크의 V9000을 같은 스키마에 적용하지 않는다.
 - `UserAuthSchemaMigrationTest`는 V1·V2 및 AUTH/USER만 검증한다. N1의 컬럼·FK·초기 보상·V2 데이터 보존·JPA 매핑 검증은 `org.kirikick.spike.n1.N1SchemaMigrationTest`에서 V9000을 명시 로드해 수행한다.
 
 ```sh

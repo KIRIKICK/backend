@@ -71,6 +71,14 @@ sourceSets {
 	test.java.srcDir rootProject.file('architecture-tests/src/regressionTest/java')
 }
 
+tasks.named('processTestResources') {
+	// V900x uses the original V1/V2 schema, not the product V3/V4 tables.
+	from('src/main/resources/db/migration') {
+		include 'V1__create_users_and_oauth_identities.sql', 'V2__create_signup_applications.sql'
+		into 'db/spike/baseline'
+	}
+}
+
 tasks.named('test') {
 	filter {
 		excludeTestsMatching 'org.kirikick.api.support.PostgresInstantTimeZoneTest'

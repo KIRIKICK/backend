@@ -141,7 +141,7 @@ class PublicationSweepSpikePostgresTest {
     registry.add("spring.flyway.default-schema", () -> SCHEMA);
     registry.add(
         "spring.flyway.locations",
-        () -> "classpath:db/migration,classpath:db/spike/n1,classpath:db/spike/publication");
+        () -> "classpath:db/spike/baseline,classpath:db/spike/n1,classpath:db/spike/publication");
     registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
     registry.add(

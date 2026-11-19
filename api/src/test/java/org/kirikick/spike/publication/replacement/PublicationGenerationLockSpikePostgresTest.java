@@ -183,7 +183,7 @@ class PublicationGenerationLockSpikePostgresTest {
     registry.add(
         "spring.flyway.locations",
         () ->
-            "classpath:db/migration,classpath:db/spike/n1,classpath:db/spike/publication-replacement");
+            "classpath:db/spike/baseline,classpath:db/spike/n1,classpath:db/spike/publication-replacement");
     registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
     registry.add(
@@ -731,7 +731,7 @@ class PublicationGenerationLockSpikePostgresTest {
     assertThat(flyway.getConfiguration().getLocations())
         .extracting(location -> location.getDescriptor())
         .containsExactly(
-            "classpath:db/migration",
+            "classpath:db/spike/baseline",
             "classpath:db/spike/n1",
             "classpath:db/spike/publication-replacement");
     flyway.validate();
