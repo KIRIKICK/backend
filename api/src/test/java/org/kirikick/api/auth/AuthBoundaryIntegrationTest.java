@@ -15,6 +15,7 @@ import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.controller.dto.ProbeResponse;
 import org.kirikick.api.auth.domain.LoginGrant;
@@ -66,6 +67,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("온보딩 세션 없이 마스킹된 CSRF 토큰을 발급한다")
   void csrfEndpointReturnsMaskedTokenWithoutCreatingAnOnboardingSession() throws Exception {
     MvcResult result =
         mvc.perform(get("/auth/csrf"))
@@ -87,6 +89,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("보호된 API는 토큰 서명과 Redis 세션 소유자 및 활성 회원을 검증한다")
   void protectedRequestRequiresSignatureRedisOwnerAndActiveDatabaseMember() throws Exception {
     User user = users.saveAndFlush(User.create("테스터", null));
     LoginGrant grant = logins.login(user);
@@ -114,6 +117,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("동일한 Refresh 토큰을 재사용하면 새 Refresh와 기존 Access 토큰이 무효화된다")
   void exactRefreshReplayInvalidatesWinnerRefreshAndAlreadyIssuedAccessToken() throws Exception {
     LoginGrant initial = logins.login(users.saveAndFlush(User.create("회전검증", null)));
     MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
@@ -141,6 +145,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("동일한 Refresh 토큰 재사용은 회원 조회 전에 거절한다")
   void exactRefreshReplayIsRejectedBeforeTheMemberGate() throws Exception {
     LoginGrant initial = logins.login(users.saveAndFlush(User.create("재사용우선", null)));
     MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
@@ -162,6 +167,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("회원이 없거나 불일치하면 새 쿠키 없이 Refresh를 거절한다")
   void refreshRejectsMissingOrMismatchedMembersWithoutIssuingAnotherCookie() throws Exception {
     User member = users.saveAndFlush(User.create("회원검증", null));
     LoginGrant missingMember = logins.login(member);
@@ -186,6 +192,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("비활성 회원은 상태에 관계없이 새 쿠키 없이 Refresh를 거절한다")
   void refreshRejectsEveryInactiveMemberStatusWithoutIssuingAnotherCookie() throws Exception {
     for (UserStatus inactive :
         List.of(UserStatus.WITHDRAWN, UserStatus.SUSPENDED, UserStatus.BANNED)) {
@@ -208,6 +215,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("회원 조회 장애 시 Refresh와 유효한 Access 토큰도 거절한다")
   void memberLookupOutageRejectsRefreshAndAnOtherwiseValidAccessToken() throws Exception {
     User refreshMember = users.saveAndFlush(User.create("갱신장애회원", null));
     LoginGrant refreshGrant = logins.login(refreshMember);
@@ -242,6 +250,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("Origin 또는 CSRF 검증 실패 시 세션을 회전하지 않는다")
   void originAndCsrfFailuresDoNotRotateTheSession() throws Exception {
     LoginGrant grant = logins.login(users.saveAndFlush(User.create("요청검증", null)));
     MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
@@ -259,6 +268,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("정상 Refresh와 Bearer 인증은 온보딩 세션을 생성하지 않는다")
   void successfulRefreshAndProtectedBearerDoNotCreateOnboardingSessions() throws Exception {
     LoginGrant initial = logins.login(users.saveAndFlush(User.create("쿠키검증", null)));
     MvcResult csrf = mvc.perform(get("/auth/csrf")).andReturn();
@@ -292,6 +302,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("CORS 사전 요청은 Origin을 정규화하고 와일드카드 자격 증명을 허용하지 않는다")
   void corsPreflightCanonicalizesOriginWithoutWildcardCredentials() throws Exception {
     MvcResult accepted =
         mvc.perform(
@@ -326,6 +337,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("Redis 장애 시 유효한 JWT도 인증하지 않고 503을 반환한다")
   void redisUnavailableIs503RatherThanAcceptingAnOtherwiseValidJwt() throws Exception {
     LoginGrant grant = logins.login(users.saveAndFlush(User.create("장애검증", null)));
     doThrow(new DomainException(AuthErrorCode.AUTH_STATE_UNAVAILABLE))
@@ -337,6 +349,7 @@ class AuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("로컬과 DEV 외 환경은 유효한 Access 토큰으로도 API 문서에 접근할 수 없다")
   void deniesApiDocumentationOutsideLocalAndDevEvenWithAValidAccessToken() throws Exception {
     LoginGrant grant = logins.login(users.saveAndFlush(User.create("문서검증", null)));
     for (String path :

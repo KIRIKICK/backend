@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class SignupRequestTest {
 
   @Test
+  @DisplayName("Bean Validation에서 필수 요청값과 중첩값 누락을 거절한다")
   void beanValidationRejectsMissingRequiredAndNestedRequestValues() {
     try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
       var validator = factory.getValidator();
@@ -26,6 +28,7 @@ class SignupRequestTest {
   }
 
   @Test
+  @DisplayName("동의 정책과 표시 이름의 세부 규칙은 하위 계층에서 검증한다")
   void beanValidationLeavesConsentPolicyAndExactNameValidationToLowerLayers() {
     try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
       SignupRequest request =

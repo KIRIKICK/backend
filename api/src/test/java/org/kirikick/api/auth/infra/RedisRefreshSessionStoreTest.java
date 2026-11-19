@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
@@ -62,6 +63,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @ParameterizedTest
+  @DisplayName("활성 상태가 아닌 Refresh 세션은 사용할 수 없다")
   @NullSource
   @ValueSource(strings = {"REVOKED", "UNKNOWN"})
   void rejectsSessionsWithoutActiveStatus(String status) {
@@ -77,6 +79,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("불투명한 Refresh 토큰을 발급하고 저장소에는 다이제스트 인덱스만 남긴다")
   void issuesOpaqueRefreshTokenAndStoresOnlyDigestIndexes() {
     RedisRefreshSessionStore store = store();
     UUID userUuid = UUID.randomUUID();
@@ -90,6 +93,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("Refresh를 한 번 회전하고 같은 토큰이 다시 오면 세션 family 전체를 폐기한다")
   void rotatesOnceAndExactReplayRevokesTheWholeSessionFamily() {
     RedisRefreshSessionStore store = store();
     UUID userUuid = UUID.randomUUID();
@@ -109,6 +113,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("위조 토큰으로 다른 사람의 세션을 선택하거나 폐기할 수 없다")
   void forgedTokenCannotSelectOrRevokeAnotherSession() {
     RedisRefreshSessionStore store = store();
     UUID userUuid = UUID.randomUUID();
@@ -123,6 +128,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("유휴 만료 시각이 지나면 Redis TTL이 남아 있어도 Refresh를 거절한다")
   void rejectsRefreshTokenAfterIdleExpiryEvenBeforeRedisWallClockExpiry() {
     UUID userUuid = UUID.randomUUID();
     IssuedSession issued = store().issue(1L, userUuid);
@@ -137,6 +143,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("동시 회전 중 하나만 성공하고 다른 요청은 토큰 재사용으로 처리한다")
   void allowsOnlyOneConcurrentRotationAndTreatsTheLoserAsReplay() throws Exception {
     RedisRefreshSessionStore store = store();
     IssuedSession issued = store.issue(1L, UUID.randomUUID());
@@ -156,6 +163,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("사용한 토큰 다이제스트는 유휴 만료와 무관하게 절대 만료까지 보관한다")
   void keepsConsumedDigestForAbsoluteLifetimeInsteadOfIdleLifetime() {
     IssuedSession issued = store().issue(1L, UUID.randomUUID());
 
@@ -168,6 +176,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("같은 Redis 서버에서도 네임스페이스가 다르면 세션을 조회할 수 없다")
   void doesNotExposeSessionAcrossNamespacesOnTheSameRedisServer() {
     IssuedSession issued = store().issue(1L, UUID.randomUUID());
     try (RedisTestSupport other = RedisTestSupport.create()) {
@@ -180,6 +189,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @ParameterizedTest
+  @DisplayName("Redis 장애 타입을 민감 정보 없이 경고 로그에 기록한다")
   @ValueSource(booleans = {false, true})
   void logsRedisFailureTypesAtWarnWithoutSensitiveData(boolean hasRootCause) {
     String token = "sensitive-refresh-token";
@@ -224,6 +234,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("Redis 연결 오류를 인증 상태 장애로 변환한다")
   void mapsRedisConnectionFailureToAuthStateUnavailable() {
     LettuceConnectionFactory unavailableConnection =
         new LettuceConnectionFactory(
@@ -245,6 +256,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("회전 중 사용한 토큰을 재사용해도 만료 세션은 재생성되지 않는다")
   void doesNotRecreateExpiredSessionWhenConsumedTokenIsReplayedDuringRotation() {
     RedisRefreshSessionStore store = store();
     IssuedSession issued = store.issue(1L, UUID.randomUUID());
@@ -264,6 +276,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("조회 후 Lua 실행 전에 세션 소유자가 바뀌면 회전을 거절한다")
   void rejectsRotationWhenSessionOwnerChangesBetweenLookupAndLua() {
     RedisRefreshSessionStore store = store();
     IssuedSession issued = store.issue(1L, UUID.randomUUID());
@@ -280,6 +293,7 @@ class RedisRefreshSessionStoreTest {
   }
 
   @Test
+  @DisplayName("세션과 현재 토큰을 14일의 절대 만료 시각 이후로 연장하지 않는다")
   void neverExtendsSessionOrCurrentTokenBeyondFourteenDayAbsoluteExpiry() {
     UUID userUuid = UUID.randomUUID();
     IssuedSession first = store().issue(1L, userUuid);

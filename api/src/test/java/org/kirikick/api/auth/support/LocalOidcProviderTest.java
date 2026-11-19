@@ -19,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
@@ -27,6 +28,7 @@ class LocalOidcProviderTest {
   private static final ObjectMapper JSON = new ObjectMapper();
 
   @Test
+  @DisplayName("PKCE가 일치하는 코드만 교환하고 JWKS로 검증 가능한 JWT를 발급한다")
   void exchangesOnlyTheMatchingPkceCodeAndPublishesAJwtVerifiableFromJwks() throws Exception {
     try (LocalOidcProvider provider = LocalOidcProvider.start()) {
       String verifier = "fixture-verifier";
@@ -49,6 +51,7 @@ class LocalOidcProviderTest {
   }
 
   @Test
+  @DisplayName("토큰 요청에 verifier가 없어도 PKCE 매개변수가 빠진 인가 요청을 거절한다")
   void rejectsAnAuthorizationWithoutPkceParametersEvenWhenTheTokenRequestOmitsVerifier()
       throws Exception {
     try (LocalOidcProvider provider = LocalOidcProvider.start()) {
@@ -62,6 +65,7 @@ class LocalOidcProviderTest {
   }
 
   @Test
+  @DisplayName("지원하지 않는 PKCE 방식의 인가 요청을 거절한다")
   void rejectsAnAuthorizationWithAnUnsupportedPkceMethod() throws Exception {
     try (LocalOidcProvider provider = LocalOidcProvider.start()) {
       String verifier = "fixture-verifier";
@@ -75,6 +79,7 @@ class LocalOidcProviderTest {
   }
 
   @Test
+  @DisplayName("verifier가 인가 challenge와 일치하지 않는 토큰 요청을 거절한다")
   void rejectsATokenRequestWhoseVerifierDoesNotMatchTheAuthorizationChallenge() throws Exception {
     try (LocalOidcProvider provider = LocalOidcProvider.start()) {
       String code = authorize(provider, "nonce-value", pkce("expected-verifier"));
@@ -87,6 +92,7 @@ class LocalOidcProviderTest {
   }
 
   @Test
+  @DisplayName("검증된 다음 토큰 응답을 테스트에서 해제할 때까지 보류한다")
   void holdsTheNextValidatedTokenResponseUntilTheTestReleasesItsGate() throws Exception {
     try (LocalOidcProvider provider = LocalOidcProvider.start();
         LocalOidcProvider.TokenResponseGate gate = provider.blockNextTokenResponse()) {

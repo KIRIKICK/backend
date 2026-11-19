@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -61,6 +62,7 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @Test
+  @DisplayName("CSRF 쿠키는 SameSite=None과 Secure를 쓰고 온보딩 세션을 생성하지 않는다")
   void csrfCookieUsesNoneAndSecureWithoutCreatingAnOnboardingSession() throws Exception {
     MvcResult result =
         mvc.perform(get("/auth/csrf").secure(true)).andExpect(status().isOk()).andReturn();
@@ -70,6 +72,7 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @Test
+  @DisplayName("추가 DEV Origin에서 CSRF 엔드포인트를 읽을 수 있다")
   void additionalDevOriginCanReadTheCsrfEndpoint() throws Exception {
     mvc.perform(get("/auth/csrf").secure(true).header(HttpHeaders.ORIGIN, ADDITIONAL_FE_ORIGIN))
         .andExpect(status().isOk())
@@ -79,6 +82,7 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @ParameterizedTest
+  @DisplayName("허용된 DEV Origin은 CORS 사전 요청을 통과한다")
   @ValueSource(strings = {FE_ORIGIN, ADDITIONAL_FE_ORIGIN})
   void allowedDevOriginsPassCorsPreflight(String origin) throws Exception {
     mvc.perform(
@@ -94,6 +98,7 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @Test
+  @DisplayName("별칭 Origin은 CORS 사전 요청에서 거절된다")
   void aliasOriginIsRejectedByCorsPreflight() throws Exception {
     mvc.perform(
             options("/auth/refresh")
@@ -107,6 +112,7 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @Test
+  @DisplayName("온보딩 쿠키는 SameSite=None과 Secure를 쓰고 PKCE와 state 및 nonce를 유지한다")
   void onboardingCookieUsesNoneAndSecureWhileKeepingPkceStateAndNonce() throws Exception {
     MvcResult result =
         mvc.perform(get("/oauth2/authorization/kakao").secure(true))
@@ -118,6 +124,7 @@ class DevCrossSiteCookieIntegrationTest {
   }
 
   @ParameterizedTest
+  @DisplayName("허용된 DEV Origin에서도 CSRF 검사와 Refresh 재사용 탐지를 적용한다")
   @ValueSource(strings = {FE_ORIGIN, ADDITIONAL_FE_ORIGIN})
   void allowedDevOriginsPreserveCsrfAndRefreshReuseChecks(String origin) throws Exception {
     LoginGrant initial = logins.login(users.saveAndFlush(User.create("쿠키검증", null)));

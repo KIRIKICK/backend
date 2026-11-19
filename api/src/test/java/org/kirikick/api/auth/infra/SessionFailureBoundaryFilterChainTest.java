@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.function.Consumer;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -26,6 +27,7 @@ class SessionFailureBoundaryFilterChainTest {
       new SessionStateUnavailableFilter(new ObjectMapper(), delegate());
 
   @Test
+  @DisplayName("세션 생성 실패를 서비스 이용 불가 응답으로 변환한다")
   void createFailureBecomesUnavailableResponse() throws Exception {
     SessionRepository<MapSession> delegate = delegate();
     when(delegate.createSession()).thenThrow(failure());
@@ -34,6 +36,7 @@ class SessionFailureBoundaryFilterChainTest {
   }
 
   @Test
+  @DisplayName("세션 저장 실패를 서비스 이용 불가 응답으로 변환한다")
   void saveFailureBecomesUnavailableResponse() throws Exception {
     SessionRepository<MapSession> delegate = delegate();
     when(delegate.createSession()).thenReturn(new MapSession());
@@ -43,6 +46,7 @@ class SessionFailureBoundaryFilterChainTest {
   }
 
   @Test
+  @DisplayName("세션 조회 실패를 서비스 이용 불가 응답으로 변환한다")
   void findFailureBecomesUnavailableResponse() throws Exception {
     SessionRepository<MapSession> delegate = delegate();
     when(delegate.findById(anyString())).thenThrow(failure());
@@ -53,6 +57,7 @@ class SessionFailureBoundaryFilterChainTest {
   }
 
   @Test
+  @DisplayName("세션 삭제 실패를 서비스 이용 불가 응답으로 변환한다")
   void deleteFailureBecomesUnavailableResponse() throws Exception {
     SessionRepository<MapSession> delegate = delegate();
     when(delegate.createSession()).thenReturn(new MapSession());

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -45,6 +46,7 @@ class JwtTokenServiceTest {
   }
 
   @Test
+  @DisplayName("UUID subject와 세션 및 발급자와 대상 및 15분 만료를 담은 RS256 토큰을 발급한다")
   void issuesRs256WithUuidSubjectSessionIssuerAudienceAndFifteenMinuteExpiry() {
     var service = service(NOW, "https://api.example", "kirikick");
     var session = session();
@@ -59,6 +61,7 @@ class JwtTokenServiceTest {
   }
 
   @ParameterizedTest(name = "exposedDecoder={0}, offsetNanos={1}, valid={2}")
+  @DisplayName("두 디코더 모두 직렬화된 JWT 만료 시각의 경계를 검증한다")
   @CsvSource({
     "false, -1, true",
     "false, 0, false",
@@ -88,6 +91,7 @@ class JwtTokenServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("필수 시간 클레임이 없으면 토큰을 거절한다")
   @ValueSource(strings = {"iat", "exp"})
   void rejectsMissingRequiredTimeClaim(String missingClaim) throws Exception {
     String raw =
@@ -103,6 +107,7 @@ class JwtTokenServiceTest {
   }
 
   @ParameterizedTest(name = "claim={0}, value={1}")
+  @DisplayName("필수 클레임이 올바르지 않으면 토큰을 거절한다")
   @MethodSource("invalidRequiredClaims")
   void rejectsInvalidRequiredClaims(String claimName, Object claimValue) throws Exception {
     String raw = signedClaim(claimName, claimValue);
@@ -113,6 +118,7 @@ class JwtTokenServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("식별 클레임이 없으면 유효하지 않은 토큰 오류를 반환한다")
   @ValueSource(strings = {"sub", "sid", "aud"})
   void reportsMissingIdentityClaimsAsInvalidToken(String missingClaim) throws Exception {
     String raw = signedClaim(missingClaim, null);
@@ -165,6 +171,7 @@ class JwtTokenServiceTest {
   }
 
   @ParameterizedTest(name = "iatOffsetSeconds={0}, expOffsetSeconds={1}")
+  @DisplayName("iat와 exp가 잘못되면 토큰을 거절한다")
   @CsvSource({"1, 900", "0, 0", "0, -1"})
   void rejectsInvalidIssuedAndExpiryClaims(long issuedOffset, long expiryOffset) throws Exception {
     Instant issuedAt = NOW.plusSeconds(issuedOffset);
@@ -179,6 +186,7 @@ class JwtTokenServiceTest {
   }
 
   @ParameterizedTest(name = "nbfOffsetSeconds={0}, valid={1}")
+  @DisplayName("선택적 nbf 클레임이 있으면 활성 시각을 검증한다")
   @CsvSource({"0, true", "1, false"})
   void preservesOptionalNotBeforeValidation(long offsetSeconds, boolean expectedValid)
       throws Exception {
@@ -196,6 +204,7 @@ class JwtTokenServiceTest {
   }
 
   @Test
+  @DisplayName("만료됐거나 발급자 또는 대상이 다른 토큰을 거절한다")
   void rejectsExpiredTokensAndWrongIssuerOrAudience() {
     String valid = service(NOW, "https://api.example", "kirikick").issue(session());
     assertThatThrownBy(
@@ -208,6 +217,7 @@ class JwtTokenServiceTest {
   }
 
   @Test
+  @DisplayName("다른 키로 서명한 토큰과 불일치하는 설정 키 쌍을 거절한다")
   void rejectsTokensSignedByAnotherKeyAndMismatchedConfiguredKeyPair() throws Exception {
     KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
     generator.initialize(2048);

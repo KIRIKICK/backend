@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.infra.SessionStateUnavailableException;
 import org.kirikick.api.auth.infra.SessionStateUnavailableFilter;
@@ -23,6 +24,7 @@ class OAuthStaleCompletionFilterTest {
       "https://frontend.example/auth/kakao/callback?result=ERROR&errorCode=OAUTH_FAILED";
 
   @Test
+  @DisplayName("세션이 사라진 이전 콜백은 일치하는 표식이 있으면 고정 실패 경로로 리다이렉트한다")
   void replacesExactMarkedStaleCompletionWithFixedFailureRedirectWhenSessionIsGone()
       throws Exception {
     Fixture fixture = validFixture();
@@ -52,6 +54,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("흐름이 claim을 획득한 콜백과 다르면 표식을 남기지 않는다")
   void doesNotMarkWhenFlowDoesNotMatchTheClaimedCallback() {
     Fixture fixture = validFixture();
     OAuthFlowMetadata differentFlow =
@@ -70,6 +73,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("claim ID가 콜백과 다르면 표식을 남기지 않는다")
   void doesNotMarkWhenClaimIdDoesNotMatchTheClaimedCallback() {
     Fixture fixture = validFixture();
 
@@ -81,6 +85,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("요청 세션 ID가 claim 흐름과 연결되지 않으면 표식을 남기지 않는다")
   void doesNotMarkWhenRequestedSessionIdDoesNotBindTheClaimedFlow() {
     Fixture fixture = validFixture();
     fixture.request().setRequestedSessionId("different-session");
@@ -93,6 +98,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("준비된 응답의 상태 코드가 다르면 이전 완료 예외를 다시 던진다")
   void rethrowsMarkedStaleCompletionWhenPreparedResponseHasWrongStatus() {
     MockHttpServletResponse response = fixedFailureResponse();
     response.setStatus(302);
@@ -101,6 +107,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("준비된 응답에 no-store가 없으면 이전 완료 예외를 다시 던진다")
   void rethrowsMarkedStaleCompletionWhenPreparedResponseLacksNoStore() {
     MockHttpServletResponse response = fixedFailureResponse();
     response.setHeader("Cache-Control", "private");
@@ -109,6 +116,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("준비된 응답의 Location이 다르면 이전 완료 예외를 다시 던진다")
   void rethrowsMarkedStaleCompletionWhenPreparedResponseHasDifferentLocation() {
     MockHttpServletResponse response = fixedFailureResponse();
     response.setHeader("Location", "https://frontend.example/other");
@@ -117,6 +125,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("이전 세션이 남아 있으면 이전 완료 예외를 다시 던진다")
   void rethrowsMarkedStaleCompletionWhenTheOldSessionStillExists() {
     Fixture fixture = validFixture();
     SessionRepository<Session> sessions = sessions();
@@ -141,6 +150,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("응답이 이미 커밋되면 이전 완료 예외를 다시 던진다")
   void rethrowsMarkedStaleCompletionWhenResponseIsAlreadyCommitted() throws Exception {
     Fixture fixture = validFixture();
     SessionRepository<Session> sessions = sessions();
@@ -165,6 +175,7 @@ class OAuthStaleCompletionFilterTest {
   }
 
   @Test
+  @DisplayName("표식에 대응하는 이전 세션의 조회에 실패하면 장애 응답을 반환한다")
   void rendersUnavailableWhenMarkedStaleSessionLookupFails() throws Exception {
     Fixture fixture = validFixture();
     SessionRepository<Session> sessions = sessions();

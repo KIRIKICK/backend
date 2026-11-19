@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -13,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class OriginValidationFilterTest {
 
   @Test
+  @DisplayName("변경 요청은 정규화된 허용 Origin과 일치할 때만 통과한다")
   void acceptsOnlyTheExactNormalizedOriginForMutations() throws Exception {
     OriginValidationFilter filter =
         new OriginValidationFilter(
@@ -48,6 +50,7 @@ class OriginValidationFilterTest {
   }
 
   @Test
+  @DisplayName("안전한 조회 요청에는 Origin을 요구하지 않는다")
   void doesNotRequireOriginForSafeReads() throws Exception {
     OriginValidationFilter filter =
         new OriginValidationFilter(

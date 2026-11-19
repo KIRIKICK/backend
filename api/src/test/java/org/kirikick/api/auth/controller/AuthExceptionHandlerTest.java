@@ -2,6 +2,7 @@ package org.kirikick.api.auth.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.user.domain.exception.UserErrorCode;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 class AuthExceptionHandlerTest {
   @Test
+  @DisplayName("인증 예외 처리기는 인증 컨트롤러에만 적용된다")
   void handlesOnlyAuthControllers() {
     assertThat(
             AuthExceptionHandler.class
@@ -19,6 +21,7 @@ class AuthExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("인증 컨트롤러에서도 회원 입력 검증 오류를 유지한다")
   void preservesUserValidationErrorsRaisedWithinAuthControllers() {
     var response =
         new AuthExceptionHandler()

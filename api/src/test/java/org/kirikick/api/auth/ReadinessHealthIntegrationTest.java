@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.support.AuthTestSettings;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ class ReadinessHealthIntegrationTest {
   }
 
   @Test
+  @DisplayName("Redis 장애 시 readiness만 실패하고 liveness는 유지된다")
   void redisOutageMakesReadinessDownButLeavesLivenessUp() throws Exception {
     mvc.perform(get("/actuator/health/liveness"))
         .andExpect(status().isOk())

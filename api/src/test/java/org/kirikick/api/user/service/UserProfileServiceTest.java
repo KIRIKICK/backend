@@ -17,6 +17,7 @@ import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -41,6 +42,7 @@ class UserProfileServiceTest {
   @Mock private OAuthIdentityRepository identities;
 
   @Test
+  @DisplayName("회원 프로필과 연동 공급자 목록을 반환한다")
   void returnsTheUserProfileAndLinkedProviders() {
     UUID userUuid = UUID.randomUUID();
     User user = user(17L, userUuid, "display", "https://image.example/profile.png");
@@ -59,6 +61,7 @@ class UserProfileServiceTest {
   }
 
   @Test
+  @DisplayName("null 프로필 이미지 URL을 그대로 반환한다")
   void preservesANullProfileImageUrl() {
     UUID userUuid = UUID.randomUUID();
     User user = user(17L, userUuid, "display", null);
@@ -71,6 +74,7 @@ class UserProfileServiceTest {
   }
 
   @Test
+  @DisplayName("연동 공급자가 0개부터 2개일 때 저장소를 각각 한 번 조회하며 쓰지 않는다")
   void returnsZeroOneAndTwoProvidersWithOneLookupEachAndNoWrites() {
     for (List<OAuthProvider> expectedProviders :
         List.of(
@@ -95,6 +99,7 @@ class UserProfileServiceTest {
   }
 
   @Test
+  @DisplayName("회원이 없으면 공급자를 조회하지 않고 거절한다")
   void rejectsAMissingUserWithoutLookingUpProviders() {
     UUID userUuid = UUID.randomUUID();
     when(users.findByUuid(userUuid)).thenReturn(Optional.empty());
@@ -105,6 +110,7 @@ class UserProfileServiceTest {
   }
 
   @Test
+  @DisplayName("회원 조회 시간 초과를 프로필 일시 이용 불가로 변환한다")
   void mapsAUserLookupTimeoutToProfileUnavailable() {
     UUID userUuid = UUID.randomUUID();
     when(users.findByUuid(userUuid)).thenThrow(new QueryTimeoutException("timeout"));
@@ -115,6 +121,7 @@ class UserProfileServiceTest {
   }
 
   @Test
+  @DisplayName("공급자 조회 시간 초과를 프로필 일시 이용 불가로 변환한다")
   void mapsAProviderLookupTimeoutToProfileUnavailable() {
     UUID userUuid = UUID.randomUUID();
     User user = user(17L, userUuid, "display", null);
@@ -125,6 +132,7 @@ class UserProfileServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("가용성 장애의 예외 클래스만 경고 로그에 남긴다")
   @ValueSource(booleans = {false, true})
   void logsOnlyTheAvailabilityFailureClassAtWarn(boolean providerLookupFails) {
     UUID userUuid = UUID.randomUUID();
@@ -164,6 +172,7 @@ class UserProfileServiceTest {
   }
 
   @Test
+  @DisplayName("두 저장소의 도메인 오류와 알 수 없는 오류는 그대로 전파한다")
   void preservesSemanticNegativeAndUnknownFailuresFromEitherRepository() {
     for (RuntimeException failure :
         List.of(

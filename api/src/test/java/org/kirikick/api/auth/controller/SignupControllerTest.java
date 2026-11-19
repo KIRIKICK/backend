@@ -101,6 +101,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("가입 컨텍스트는 가입 신청 ID와 추천 표시 이름만 반환한다")
   void contextReturnsOnlySignupApplicationIdAndSuggestedDisplayName() {
     SignupContextResponse response = controller.context(request());
 
@@ -109,6 +110,7 @@ class SignupControllerTest {
   }
 
   @ParameterizedTest
+  @DisplayName("필수값 누락과 잘못된 형식 및 타입 변환과 추가 필드를 가입 처리 전에 거절한다")
   @MethodSource("invalidSignupRequests")
   void httpBindingRejectsMissingMalformedCoercedAndExtraValuesBeforeSignup(String payload)
       throws Exception {
@@ -123,6 +125,7 @@ class SignupControllerTest {
   }
 
   @ParameterizedTest
+  @DisplayName("지원하는 JSON 미디어 타입의 가입 요청을 지정된 타입으로 바인딩한다")
   @ValueSource(strings = {"application/json", "application/vnd.kirikick+json"})
   void httpBindingAcceptsTypedRequestForSupportedJsonMediaTypes(String mediaType) throws Exception {
     signupMvc()
@@ -182,6 +185,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("추측한 가입 신청 ID는 claim이나 가입 완료 전에 거절한다")
   void rejectsGuessedSignupApplicationIdBeforeClaimOrCompletion() throws Exception {
     assertThatThrownBy(() ->
             controller.signup(
@@ -195,6 +199,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("완료된 가입 신청에는 로그인 자격 증명을 발급하지 않는다")
   void completedApplicationDoesNotIssueCredentials() throws Exception {
     when(claims.claimSignup(any(), any(), any(), any(), any()))
         .thenReturn(RedisFlowClaimGuard.ClaimSignupResult.CLAIMED);
@@ -217,6 +222,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("claim이 만료되면 일치하는 증명만 정리하고 가입을 완료하지 않는다")
   void expiredClaimCleansOnlyTheExactProofAndDoesNotComplete() throws Exception {
     when(claims.claimSignup(any(), any(), any(), any(), any()))
         .thenReturn(RedisFlowClaimGuard.ClaimSignupResult.EXPIRED_CLEANUP_PERMIT);
@@ -233,6 +239,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("나이 확인 실패 시 가입 완료 전에 증명을 정리한다")
   void ageConfirmationFailureCleansProofBeforeAnyCompletion() throws Exception {
     when(claims.finishProof(any(), any(), any(), any()))
         .thenReturn(RedisFlowClaimGuard.FinishProofResult.CLEANUP_PERMIT);
@@ -251,6 +258,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("claim 정리도 실패해도 최초 가입 완료 오류를 유지한다")
   void completionFailureIsPreservedWhenClaimCleanupFails() throws Exception {
     RuntimeException original = new IllegalStateException("completion failed");
     when(claims.claimSignup(any(), any(), any(), any(), any()))
@@ -268,6 +276,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("claim 뒤에 확인된 만료는 잘못된 증명 오류로 처리하고 로그인하지 않는다")
   void normalizesExpiryDetectedAfterClaimToInvalidProofWithoutLogin() throws Exception {
     when(claims.claimSignup(any(), any(), any(), any(), any()))
         .thenReturn(RedisFlowClaimGuard.ClaimSignupResult.CLAIMED);
@@ -411,6 +420,7 @@ class SignupControllerTest {
   }
 
   @Test
+  @DisplayName("가입 완료 후 회원 재조회 장애가 발생하면 로그인 없이 장애를 반환한다")
   void committedCompletionUserReloadAvailabilityFailureReturnsUnavailableWithoutLogin()
       throws Exception {
     UUID userUuid = UUID.randomUUID();

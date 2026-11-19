@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -85,6 +86,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("일반 OAuth 시작 실패는 선택한 추가 Origin으로 리다이렉트한다")
   void ordinaryOAuthStartFailureReturnsToTheSelectedAdditionalOrigin() throws Exception {
     doReturn(RedisFlowClaimGuard.BeginOAuthResult.SIGNUP_IN_PROGRESS)
         .when(flowGuard)
@@ -102,6 +104,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("OAuth 시작 중 상태 조회 장애가 발생하면 추가 Origin으로 리다이렉트하지 않는다")
   void unavailableOAuthStartDoesNotRedirectToTheSelectedAdditionalOrigin() throws Exception {
     doThrow(new SessionStateUnavailableException(new RuntimeException("redis unavailable")))
         .when(flowGuard)
@@ -118,6 +121,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("선택한 추가 Origin으로 가입 필요 콜백을 반환한다")
   void selectedAdditionalOriginReceivesTheSignupRequiredCallback() throws Exception {
     OIDC.nextTokenSubject("additional-origin-" + UUID.randomUUID());
 
@@ -128,6 +132,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("프론트엔드 Origin이 없으면 기본 가입 필요 콜백을 사용한다")
   void missingFrontendOriginKeepsTheDefaultSignupRequiredCallback() throws Exception {
     OIDC.nextTokenSubject("default-origin-" + UUID.randomUUID());
 
@@ -138,6 +143,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("추가 Origin에서 로그인한 회원의 Refresh가 성공한다")
   void selectedAdditionalOriginLoginRefreshesForTheAuthenticatedUser() throws Exception {
     String subject = "active-additional-origin-" + UUID.randomUUID();
     User user = users.saveAndFlush(User.create("활성회원", null));
@@ -156,6 +162,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("공급자 인증 실패는 선택한 추가 Origin으로 리다이렉트한다")
   void providerFailureReturnsToTheSelectedAdditionalOrigin() throws Exception {
     OIDC.nextTokenFault(LocalOidcProvider.TokenFault.WRONG_NONCE);
 
@@ -167,6 +174,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("콜백의 선택값으로 저장된 프론트엔드 Origin을 덮어쓸 수 없다")
   void callbackSelectorCannotOverrideTheStoredFrontendOrigin() throws Exception {
     OIDC.nextTokenSubject("callback-selector-" + UUID.randomUUID());
     StartedFlow flow = startFlow(ADDITIONAL_FE_ORIGIN);
@@ -183,6 +191,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("state가 틀린 콜백은 기본 실패 콜백을 사용한다")
   void callbackWithWrongStateUsesTheDefaultFailureCallback() throws Exception {
     StartedFlow flow = startFlow(ADDITIONAL_FE_ORIGIN);
     URI wrongState =
@@ -201,6 +210,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @ParameterizedTest
+  @DisplayName("새 OAuth 흐름이 우선되고 이전 콜백은 기본 실패 경로를 사용한다")
   @MethodSource("frontendOriginReplacements")
   void replacementFlowWinsWhileTheStaleCallbackUsesTheDefaultFailureTarget(
       String firstOrigin, String replacementOrigin) throws Exception {
@@ -219,6 +229,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("Origin 선택값이 잘못되어도 기존 OAuth 흐름을 계속 사용할 수 있다")
   void invalidSelectorKeepsTheExistingFlowUsable() throws Exception {
     OIDC.nextTokenSubject("preserved-flow-" + UUID.randomUUID());
     StartedFlow flow = startFlow(ADDITIONAL_FE_ORIGIN);
@@ -238,6 +249,7 @@ class DevMultiOriginOAuthIntegrationTest {
   }
 
   @Test
+  @DisplayName("프론트엔드 Origin이 중복되면 OAuth 흐름을 시작하지 않는다")
   void duplicateFrontendOriginDoesNotStartAnOAuthFlow() throws Exception {
     MvcResult result =
         mvc.perform(

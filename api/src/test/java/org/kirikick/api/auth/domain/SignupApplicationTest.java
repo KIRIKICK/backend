@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.util.UUID;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.common.exception.DomainException;
@@ -16,6 +17,7 @@ class SignupApplicationTest {
   private static final Instant EXPIRES_AT = OPENED_AT.plusSeconds(300);
 
   @Test
+  @DisplayName("정확한 연동 식별값과 고정 만료 시각으로 대기 중인 가입 신청을 생성한다")
   void opensPendingApplicationWithExactIdentityAndFixedExpiry() {
     UUID id = UUID.randomUUID();
 
@@ -31,6 +33,7 @@ class SignupApplicationTest {
   }
 
   @Test
+  @DisplayName("가입 신청의 OAuth 식별값은 정확히 일치해야 한다")
   void identityComparisonIsExact() {
     SignupApplication application =
         SignupApplication.open(UUID.randomUUID(), OAuthProvider.APPLE, "Subject", OPENED_AT);
@@ -41,6 +44,7 @@ class SignupApplicationTest {
   }
 
   @Test
+  @DisplayName("가입 신청은 한 번만 완료되고 표시 이름을 그대로 보존한다")
   void completesOnceAndRetainsExactDisplayName() {
     SignupApplication application =
         SignupApplication.open(UUID.randomUUID(), OAuthProvider.KAKAO, "subject", OPENED_AT);
@@ -60,6 +64,7 @@ class SignupApplicationTest {
   }
 
   @Test
+  @DisplayName("잘못된 값으로 가입 신청을 열거나 완료할 수 없다")
   void rejectsInvalidOpenAndCompletionBoundaries() {
     assertCode(
         () -> SignupApplication.open(null, OAuthProvider.KAKAO, "subject", OPENED_AT),

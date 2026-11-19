@@ -23,6 +23,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -50,6 +51,7 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 class OAuthLoginSuccessHandlerTest {
 
   @Test
+  @DisplayName("Refresh 쿠키를 준비하지 못하면 활성 로그인 grant를 폐기한다")
   void revokesActiveLoginGrantWhenRefreshCookiePreparationFails() {
     Fixture fixture = new Fixture();
     RuntimeException responseFailure = new RuntimeException("response preparation failed");
@@ -64,6 +66,7 @@ class OAuthLoginSuccessHandlerTest {
   }
 
   @Test
+  @DisplayName("grant 폐기도 실패하면 최초 응답 준비 오류를 유지한다")
   void preservesResponsePreparationFailureWhenGrantRevocationFails() {
     Fixture fixture = new Fixture();
     RuntimeException responseFailure = new RuntimeException("response preparation failed");
@@ -78,6 +81,7 @@ class OAuthLoginSuccessHandlerTest {
   }
 
   @Test
+  @DisplayName("Redis가 교체된 흐름이라고 판단하면 세션을 무효화하거나 grant를 발행하지 않는다")
   void doesNotInvalidateOrPublishGrantWhenRedisFinishReportsStaleFlow() throws Exception {
     Fixture fixture = new Fixture();
     when(fixture.guard.finishOAuth(
@@ -100,6 +104,7 @@ class OAuthLoginSuccessHandlerTest {
   }
 
   @ParameterizedTest
+  @DisplayName("OAuth 연동이나 회원 조회 장애 시 claim을 종료하고 장애를 반환한다")
   @ValueSource(booleans = {true, false})
   void unavailableIdentityOrUserLookupEndsTheClaimBeforeReturningUnavailable(boolean identityLookup)
       throws Exception {
@@ -112,6 +117,7 @@ class OAuthLoginSuccessHandlerTest {
   }
 
   @Test
+  @DisplayName("claim 정리가 실패해도 최초 조회 장애를 반환한다")
   void lookupUnavailableStillReturnsUnavailableWhenClaimCleanupFails() throws Exception {
     Fixture fixture = new Fixture();
     failLookup(fixture, false, new DataAccessResourceFailureException("database down"));
@@ -134,6 +140,7 @@ class OAuthLoginSuccessHandlerTest {
   }
 
   @Test
+  @DisplayName("조회 장애 시 이미 교체된 흐름의 claim을 정리해도 세션은 무효화하지 않는다")
   void lookupUnavailableDoesNotInvalidateTheSessionWhenClaimCleanupIsStale() throws Exception {
     Fixture fixture = new Fixture();
     failLookup(fixture, false, new DataAccessResourceFailureException("database down"));
@@ -154,6 +161,7 @@ class OAuthLoginSuccessHandlerTest {
   }
 
   @ParameterizedTest
+  @DisplayName("OAuth 연동이나 회원 조회의 도메인 오류는 claim을 정리하지 않고 전파한다")
   @ValueSource(booleans = {true, false})
   void semanticIdentityOrUserLookupFailurePropagatesWithoutClaimCleanup(boolean identityLookup) {
     Fixture fixture = new Fixture();

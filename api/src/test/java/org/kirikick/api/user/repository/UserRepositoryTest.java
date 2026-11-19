@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.support.JpaSliceTest;
 import org.kirikick.api.user.domain.User;
@@ -17,6 +18,7 @@ class UserRepositoryTest {
   @Autowired private EntityManager entityManager;
 
   @Test
+  @DisplayName("회원 정보를 저장하고 공개 UUID로 조회한다")
   void savesAndFindsTheFullUserModelByPublicUuid() {
     User user = User.create("display", null);
 
@@ -38,11 +40,13 @@ class UserRepositoryTest {
   }
 
   @Test
+  @DisplayName("알 수 없는 공개 UUID는 빈 결과를 반환한다")
   void returnsEmptyForAnUnknownPublicUuid() {
     assertThat(userRepository.findByUuid(UUID.randomUUID())).isEmpty();
   }
 
   @Test
+  @DisplayName("flush 후 다시 조회해도 프로필 이미지 URL을 보존한다")
   void preservesANonNullProfileImageUrlAfterFlushAndReload() {
     User saved = userRepository.save(User.create("display", "https://example.test/profile.png"));
     entityManager.flush();

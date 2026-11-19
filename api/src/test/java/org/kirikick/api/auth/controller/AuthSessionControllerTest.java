@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.LoginSession;
@@ -36,6 +37,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class AuthSessionControllerTest {
   @Test
+  @DisplayName("Refresh API 문서에 Origin과 CSRF 및 비활성 계정 오류 예시를 포함한다")
   void refreshDocumentationIncludesOriginCsrfAndInactiveAccountExamples() throws Exception {
     ApiResponse forbidden =
         Arrays.stream(
@@ -62,6 +64,7 @@ class AuthSessionControllerTest {
   }
 
   @Test
+  @DisplayName("서비스 세션을 만들지 않고 요청의 마스킹된 CSRF 토큰을 반환한다")
   void returnsMaskedCsrfRequestAttributeWithoutCreatingAServiceSession() throws Exception {
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
@@ -81,6 +84,7 @@ class AuthSessionControllerTest {
   }
 
   @Test
+  @DisplayName("Refresh 쿠키를 회전하고 본문에는 Access 토큰만 반환한다")
   void rotatesRefreshCookieAndReturnsOnlyAccessToken() throws Exception {
     LoginSessionService sessions = mock(LoginSessionService.class);
     LoginGrant grant =
@@ -113,16 +117,19 @@ class AuthSessionControllerTest {
   }
 
   @Test
+  @DisplayName("인증이 필요한 Refresh 실패 시 쿠키를 변경하지 않는다")
   void doesNotMutateRefreshCookieWhenRefreshRequiresAuthentication() throws Exception {
     assertRefreshFailure(AuthErrorCode.AUTHENTICATION_REQUIRED, status().isUnauthorized());
   }
 
   @Test
+  @DisplayName("계정이 비활성이면 Refresh 쿠키를 변경하지 않는다")
   void doesNotMutateRefreshCookieWhenAccountIsInactive() throws Exception {
     assertRefreshFailure(AuthErrorCode.ACCOUNT_INACTIVE, status().isForbidden());
   }
 
   @Test
+  @DisplayName("인증 상태 조회 장애 시 Refresh 쿠키를 변경하지 않는다")
   void doesNotMutateRefreshCookieWhenAuthenticationStateIsUnavailable() throws Exception {
     assertRefreshFailure(AuthErrorCode.AUTH_STATE_UNAVAILABLE, status().isServiceUnavailable());
   }

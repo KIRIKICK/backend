@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -12,6 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class AuthFrontendPolicyTest {
   @ParameterizedTest
+  @DisplayName("Origin이 누락되거나 잘못되면 null을 반환한다")
   @NullAndEmptySource
   @ValueSource(
       strings = {
@@ -31,6 +33,7 @@ class AuthFrontendPolicyTest {
   }
 
   @ParameterizedTest
+  @DisplayName("유효한 Origin을 정규화한다")
   @CsvSource({
     "https://APP.example:443, https://app.example",
     "http://APP.example:80, http://app.example",
@@ -44,6 +47,7 @@ class AuthFrontendPolicyTest {
   }
 
   @ParameterizedTest
+  @DisplayName("잘못된 기본 Origin과 추가 Origin 설정을 거절한다")
   @ValueSource(strings = {"https://app.example:", "https://app.example:65536"})
   void rejectsInvalidDefaultAndAdditionalOrigins(String origin) {
     assertThatThrownBy(() -> new AuthFrontendPolicy(origin, List.of()))
@@ -55,6 +59,7 @@ class AuthFrontendPolicyTest {
   }
 
   @Test
+  @DisplayName("허용된 명시적 Origin만 정규화하고 기본 콜백 설정을 유지한다")
   void canonicalizesOnlyAnAllowedExplicitSelectorAndPreservesTheConfiguredDefaultCallback() {
     AuthFrontendPolicy policy =
         new AuthFrontendPolicy("https://App.example:443", List.of("http://localhost:5173"));
@@ -68,6 +73,7 @@ class AuthFrontendPolicyTest {
   }
 
   @Test
+  @DisplayName("비어 있거나 중복되거나 잘못되거나 미허용인 Origin 선택값을 거절한다")
   void rejectsBlankMultipleMalformedAndUnlistedSelectors() {
     AuthFrontendPolicy policy = new AuthFrontendPolicy("https://app.example", List.of());
 

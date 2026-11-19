@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.support.AuthTestSettings;
@@ -39,6 +40,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("API 문서에 마스킹된 CSRF 토큰과 응답 스키마를 표시한다")
   void documentsMaskedCsrfTokenAndItsResponseSchema() throws Exception {
     JsonNode document = document();
     JsonNode operation = document.at("/paths/~1auth~1csrf/get");
@@ -53,6 +55,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("API 문서에 Refresh 요청 조건과 쿠키 및 인증 오류를 표시한다")
   void documentsRefreshRequirementsCookiesAndAuthenticationErrors() throws Exception {
     JsonNode document = document();
     JsonNode operation = document.at("/paths/~1auth~1refresh/post");
@@ -86,6 +89,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("로컬에서 인증 없이 Swagger UI와 설정을 제공한다")
   void servesSwaggerUiAndItsConfigurationWithoutAuthenticationLocally() throws Exception {
     mvc.perform(get("/swagger-ui.html"))
         .andExpect(status().is3xxRedirection())
@@ -95,6 +99,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("API 문서에 내 프로필 응답과 Bearer 인증을 표시한다")
   void documentsMyProfileResponseAndBearerAuthentication() throws Exception {
     JsonNode operation = document().at("/paths/~1users~1me~1profile/get");
 
@@ -156,6 +161,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("프로필 API 예시에 현재 도메인 오류 응답을 표시한다")
   void documentsProfileExamplesWithTheCurrentDomainErrorContracts() throws Exception {
     JsonNode operation = document().at("/paths/~1users~1me~1profile/get");
     assertThat(operation.path("description").asText()).contains("JWT", "쿠키", "CSRF", "조회");
@@ -194,6 +200,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 API 문서에 필수값과 엄격한 요청 형식을 표시한다")
   void documentsRequiredSignupValuesAndStrictRequestShape() throws Exception {
     JsonNode document = document();
     JsonNode request = document.at("/components/schemas/SignupRequest");
@@ -219,6 +226,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("CORS 거절 시 가입 JSON 형식 대신 프레임워크의 텍스트 응답을 반환할 수 있다")
   void corsRejectionCanReturnFrameworkTextInsteadOfSignupJson() throws Exception {
     mvc.perform(get("/auth/signup/context").header("Origin", "https://untrusted.invalid"))
         .andExpect(status().isForbidden())
@@ -229,6 +237,7 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 API 문서에 세션과 CSRF 및 JSON 응답 계약을 표시한다")
   void documentsSignupSessionCsrfAndJsonResponseContracts() throws Exception {
     JsonNode document = document();
     JsonNode context = document.at("/paths/~1auth~1signup~1context/get");
