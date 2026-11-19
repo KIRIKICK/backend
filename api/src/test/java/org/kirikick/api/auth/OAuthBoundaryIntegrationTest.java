@@ -140,6 +140,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("미가입 OIDC 사용자는 회원과 서비스 인증 생성 없이 가입 필요 상태를 받는다")
   void unknownSubjectCompletesTheRealOidcCallbackAsSignupRequiredWithoutMembershipOrServiceAuth()
       throws Exception {
     long membersBefore = users.count();
@@ -190,6 +191,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("활성 OAuth 연동 회원은 OIDC 콜백으로 로그인하고 Refresh할 수 있다")
   void activeIdentityCompletesTheRealOidcCallbackAndCanRefresh() throws Exception {
     OIDC.clearCapturedRequests();
     String subject = "active-" + UUID.randomUUID();
@@ -218,6 +220,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @ParameterizedTest
+  @DisplayName("비활성 OAuth 연동 회원에게 가입 증명이나 서비스 인증을 발급하지 않는다")
   @EnumSource(
       value = UserStatus.class,
       names = {"WITHDRAWN", "SUSPENDED", "BANNED"})
@@ -242,6 +245,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("state가 틀린 콜백은 토큰을 교환하거나 인증을 발급하지 않는다")
   void callbackWithWrongStateDoesNotReachTokenEndpointOrPublishAuthentication() throws Exception {
     OIDC.clearCapturedRequests();
     StartedFlow flow = startFlow();
@@ -263,6 +267,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("OIDC nonce가 틀리면 공급자 토큰을 교환해도 서비스 인증을 발급하지 않는다")
   void callbackWithWrongOidcNonceReachesTheProviderButPublishesNoAuthentication() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenFault(LocalOidcProvider.TokenFault.WRONG_NONCE);
@@ -277,6 +282,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("미가입 사용자는 형식이 맞는 중첩 동의 요청으로 가입을 완료할 수 있다")
   void unknownCallbackCanCompleteExplicitSignupWithTheExactNestedConsentPayload() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("signup-" + UUID.randomUUID());
@@ -422,6 +428,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 신청 발행 장애 시 리다이렉트나 대기 신청 저장 없이 장애를 응답한다")
   void unavailableApplicationPublicationReturnsUnavailableWithoutRedirectOrPendingRow()
       throws Exception {
     OIDC.clearCapturedRequests();
@@ -445,6 +452,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 신청 발행의 도메인 오류는 인증 상태 장애로 바꾸지 않는다")
   void semanticPublicationFailureIsNotNormalizedToAuthStateUnavailable() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("publication-semantic-" + UUID.randomUUID());
@@ -462,6 +470,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("회원과 OAuth 연동이 커밋된 뒤 로그인 자격 증명을 발급한다")
   void signupIssuesTheLoginOnlyAfterTheCompletedUserAndIdentityAreCommitted() throws Exception {
     OIDC.clearCapturedRequests();
     String subject = "commit-visible-" + UUID.randomUUID();
@@ -519,6 +528,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("추측한 가입 신청 ID로는 가입을 완료할 수 없다")
   void guessedSignupApplicationIdCannotCompleteThePendingApplication() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("guessed-application-" + UUID.randomUUID());
@@ -549,6 +559,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 요청이 동시에 와도 회원과 OAuth 연동 및 완료 결과와 grant를 한 번 생성한다")
   void concurrentSignupPostsCreateOneMemberIdentityResultAndLoginGrant() throws Exception {
     OIDC.clearCapturedRequests();
     String subject = "concurrent-signup-" + UUID.randomUUID();
@@ -586,6 +597,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("OAuth 시작 시 세션 쓰기가 실패하면 리다이렉트나 가입 신청 없이 장애를 응답한다")
   void oauthStartSessionWriteFailureReturnsUnavailableWithoutRedirectOrSignupApplication()
       throws Exception {
     long applicationsBefore = applications.count();
@@ -616,6 +628,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 증명 저장 실패 시 가입 신청을 발행하지 않는다")
   void proofWriteFailureReturnsUnavailableWithoutPublishingASignupApplication() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("proof-write-failure-" + UUID.randomUUID());
@@ -646,6 +659,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("증명이 저장된 뒤 오류가 나도 가입 신청을 발행하거나 리다이렉트하지 않는다")
   void proofWriteAppliedThenFailedDoesNotPublishASignupApplicationOrRedirect() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("proof-write-unknown-" + UUID.randomUUID());
@@ -677,6 +691,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("세션 발급이 한 번 실패해도 가입이 유지되어 같은 OAuth 계정으로 다시 로그인한다")
   void committedSignupSurvivesOneShotSessionIssueFailureAndSameIdentityCanStartANewOAuthLogin()
       throws Exception {
     OIDC.clearCapturedRequests();
@@ -747,6 +762,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("미가입 콜백은 임시 세션에 슬롯과 온보딩 증명만 저장한다")
   void unknownCallbackStoresOnlySlotAndOnboardingProofInTheTemporarySession() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("proof-only-" + UUID.randomUUID());
@@ -777,6 +793,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 claim 처리 중 OAuth 시작은 기존 세션을 변경하지 않고 실패한다")
   void oauthStartWithSignupClaimInProgressReturnsSafeFailureWithoutMutatingTheSession()
       throws Exception {
     doReturn(RedisFlowClaimGuard.BeginOAuthResult.SIGNUP_IN_PROGRESS)
@@ -794,6 +811,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("가드 장애가 발생하면 OAuth 시작 응답을 커밋하지 않고 장애를 반환한다")
   void oauthStartWithUnavailableGuardReturnsUncommittedUnavailableResponse() throws Exception {
     doThrow(new SessionStateUnavailableException(new RuntimeException("redis down")))
         .when(flowGuard)
@@ -810,6 +828,7 @@ class OAuthBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("이전 콜백이 claim을 얻은 뒤 교체되면 새 가입 흐름만 완료할 수 있다")
   void replacementAfterOldCallbackClaimsPreventsOldPublicationAndLetsTheNewContextComplete()
       throws Exception {
     OIDC.clearCapturedRequests();

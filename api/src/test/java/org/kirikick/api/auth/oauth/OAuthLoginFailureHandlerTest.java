@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.infra.AuthFrontendPolicy;
 import org.kirikick.api.auth.infra.RedisFlowClaimGuard;
@@ -24,6 +25,7 @@ import org.springframework.security.authentication.AuthenticationServiceExceptio
 class OAuthLoginFailureHandlerTest {
 
   @Test
+  @DisplayName("실패한 OAuth 흐름이 현재 요청과 일치하면 세션을 무효화한다")
   void invalidatesSessionWhenRequestCarriesMatchedFailedFlow() throws Exception {
     RedisFlowClaimGuard guard = mock(RedisFlowClaimGuard.class);
     Instant now = Instant.parse("2026-11-03T00:00:00Z");
@@ -52,6 +54,7 @@ class OAuthLoginFailureHandlerTest {
   }
 
   @Test
+  @DisplayName("이전 추가 Origin 흐름의 표식과 실패 리다이렉트의 Location이 일치한다")
   void staleAlternateFrontendMarkerUsesTheSameLocationAsTheFailureRedirect() throws Exception {
     RedisFlowClaimGuard guard = mock(RedisFlowClaimGuard.class);
     Instant now = Instant.parse("2026-11-03T00:00:00Z");
@@ -95,6 +98,7 @@ class OAuthLoginFailureHandlerTest {
   }
 
   @Test
+  @DisplayName("이전 콜백에 일치하는 요청 흐름이 없으면 세션을 유지한다")
   void preservesSessionWhenStaleCallbackHasNoRequestLocalMatchedFlow() throws Exception {
     OAuthLoginFailureHandler handler = handler(mock(RedisFlowClaimGuard.class), Instant.EPOCH);
     HttpServletRequest request = mock(HttpServletRequest.class);
@@ -109,6 +113,7 @@ class OAuthLoginFailureHandlerTest {
   }
 
   @Test
+  @DisplayName("OAuth 실패는 허용된 고정 콜백 경로로 리다이렉트한다")
   void redirectsFailuresToFixedAllowlistedCallbackLocation() throws Exception {
     OAuthLoginFailureHandler handler = handler(mock(RedisFlowClaimGuard.class), Instant.EPOCH);
     HttpServletRequest request = mock(HttpServletRequest.class);

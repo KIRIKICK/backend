@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import jakarta.persistence.EntityManager;
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.OAuthProvider;
@@ -20,6 +21,7 @@ class OAuthIdentityRepositoryTest {
   @Autowired private EntityManager entityManager;
 
   @Test
+  @DisplayName("공급자 subject를 입력 그대로 저장하고 조회한다")
   void savesAndFindsAnOpaqueProviderSubject() {
     User user = userRepository.save(User.create("display", null));
     OAuthIdentity identity = OAuthIdentity.create(user.getId(), OAuthProvider.KAKAO, "AbC");
@@ -39,6 +41,7 @@ class OAuthIdentityRepositoryTest {
   }
 
   @Test
+  @DisplayName("알 수 없는 공급자 subject를 조회하면 빈 결과를 반환한다")
   void returnsEmptyForAnUnknownProviderSubject() {
     assertThat(
             oauthIdentityRepository.findByProviderAndProviderSubject(
@@ -47,6 +50,7 @@ class OAuthIdentityRepositoryTest {
   }
 
   @Test
+  @DisplayName("요청한 회원에게 연결된 공급자만 조회한다")
   void findsOnlyTheProvidersLinkedToTheRequestedUser() {
     User firstUser = userRepository.save(User.create("first", null));
     User secondUser = userRepository.save(User.create("second", null));
@@ -66,6 +70,7 @@ class OAuthIdentityRepositoryTest {
   }
 
   @Test
+  @DisplayName("연동이 없거나 알 수 없는 회원은 빈 공급자 목록을 반환한다")
   void returnsNoProvidersForUsersWithoutLinkedIdentitiesOrUnknownUsers() {
     User user = userRepository.save(User.create("display", null));
     entityManager.flush();

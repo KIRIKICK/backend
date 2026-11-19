@@ -11,6 +11,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -33,6 +34,7 @@ class SignupApplicationProofBindingValidatorTest {
       new SignupApplicationProofBindingValidator(applications, Clock.fixed(NOW, ZoneOffset.UTC));
 
   @Test
+  @DisplayName("가입 신청의 식별값과 만료 시각이 증명과 정확히 일치하고 유효해야 한다")
   void acceptsOnlyExactUnexpiredApplicationIdentityAndExpiry() {
     UUID id = UUID.randomUUID();
     SignupApplication application =
@@ -45,6 +47,7 @@ class SignupApplicationProofBindingValidatorTest {
   }
 
   @Test
+  @DisplayName("가입 신청이 없으면 유효하지 않은 증명으로 처리한다")
   void rejectsMissingApplicationAsInvalidProof() {
     UUID id = UUID.randomUUID();
     when(applications.findById(id)).thenReturn(Optional.empty());
@@ -57,6 +60,7 @@ class SignupApplicationProofBindingValidatorTest {
   }
 
   @ParameterizedTest
+  @DisplayName("공급자 subject 또는 만료 시각이 일치하지 않으면 거절한다")
   @MethodSource("mismatchedBindings")
   void rejectsMismatchedProviderSubjectOrExpiry(
       OAuthProvider provider, String providerSubject, Instant expiresAt) {
@@ -78,6 +82,7 @@ class SignupApplicationProofBindingValidatorTest {
   }
 
   @ParameterizedTest
+  @DisplayName("가입 신청은 정확한 만료 시각부터 거절한다")
   @ValueSource(longs = {300, 301})
   void rejectsApplicationAtOrAfterExactExpiry(long ageSeconds) {
     UUID id = UUID.randomUUID();
@@ -93,6 +98,7 @@ class SignupApplicationProofBindingValidatorTest {
   }
 
   @Test
+  @DisplayName("쿼리 시간 초과를 인증 상태 장애로 변환한다")
   void mapsQueryTimeoutToAuthStateUnavailable() {
     UUID id = UUID.randomUUID();
     when(applications.findById(id)).thenThrow(new QueryTimeoutException("database timeout"));
@@ -105,6 +111,7 @@ class SignupApplicationProofBindingValidatorTest {
   }
 
   @Test
+  @DisplayName("도메인 오류는 그대로 전파한다")
   void propagatesSemanticFailureWithoutNormalization() {
     UUID id = UUID.randomUUID();
     DataIntegrityViolationException original =

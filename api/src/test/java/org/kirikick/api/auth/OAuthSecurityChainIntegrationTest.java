@@ -28,6 +28,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -121,6 +122,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("기존 회원은 PKCE를 사용해 OIDC 로그인을 완료한다")
   void existingUserCompletesOidcLoginWithPkce() throws Exception {
     String subject = "active-" + UUID.randomUUID();
     User user = users.saveAndFlush(User.create("활성회원", null));
@@ -146,6 +148,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("state가 틀리면 인가 코드를 교환하지 않는다")
   void wrongStateDoesNotExchangeTheAuthorizationCode() throws Exception {
     StartedFlow flow = startFlow();
     URI wrongState =
@@ -161,6 +164,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("nonce가 틀리면 Refresh 쿠키를 발급하지 않는다")
   void wrongNonceDoesNotIssueARefreshCookie() throws Exception {
     OIDC.nextTokenFault(LocalOidcProvider.TokenFault.WRONG_NONCE);
     StartedFlow flow = startFlow();
@@ -172,6 +176,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("미가입 OIDC 사용자는 회원과 서비스 인증 생성 없이 가입 필요 상태를 받는다")
   void unknownSubjectCompletesTheRealOidcCallbackAsSignupRequiredWithoutMembershipOrServiceAuth()
       throws Exception {
     long membersBefore = users.count();
@@ -230,6 +235,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @ParameterizedTest
+  @DisplayName("비활성 OAuth 연동 회원에게 가입 증명이나 서비스 인증을 발급하지 않는다")
   @EnumSource(
       value = UserStatus.class,
       names = {"WITHDRAWN", "SUSPENDED", "BANNED"})
@@ -256,6 +262,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 신청 발행 장애 시 리다이렉트나 대기 신청 저장 없이 장애를 응답한다")
   void unavailableApplicationPublicationReturnsUnavailableWithoutRedirectOrPendingRow()
       throws Exception {
     OIDC.clearCapturedRequests();
@@ -279,6 +286,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 신청 발행의 도메인 오류는 인증 상태 장애로 바꾸지 않는다")
   void semanticPublicationFailureIsNotNormalizedToAuthStateUnavailable() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("publication-semantic-" + UUID.randomUUID());
@@ -296,6 +304,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("OAuth 시작 시 세션 쓰기가 실패하면 리다이렉트나 가입 신청 없이 장애를 응답한다")
   void oauthStartSessionWriteFailureReturnsUnavailableWithoutRedirectOrSignupApplication()
       throws Exception {
     long applicationsBefore = applications.count();
@@ -326,6 +335,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 증명 저장 실패 시 가입 신청을 발행하지 않는다")
   void proofWriteFailureReturnsUnavailableWithoutPublishingASignupApplication() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("proof-write-failure-" + UUID.randomUUID());
@@ -356,6 +366,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("증명이 저장된 뒤 오류가 나도 가입 신청을 발행하거나 리다이렉트하지 않는다")
   void proofWriteAppliedThenFailedDoesNotPublishASignupApplicationOrRedirect() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("proof-write-unknown-" + UUID.randomUUID());
@@ -387,6 +398,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("미가입 콜백은 임시 세션에 슬롯과 온보딩 증명만 저장한다")
   void unknownCallbackStoresOnlySlotAndOnboardingProofInTheTemporarySession() throws Exception {
     OIDC.clearCapturedRequests();
     OIDC.nextTokenSubject("proof-only-" + UUID.randomUUID());
@@ -413,6 +425,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("가입 claim 처리 중 OAuth 시작은 기존 세션을 변경하지 않고 실패한다")
   void oauthStartWithSignupClaimInProgressReturnsSafeFailureWithoutMutatingTheSession()
       throws Exception {
     doReturn(RedisFlowClaimGuard.BeginOAuthResult.SIGNUP_IN_PROGRESS)
@@ -430,6 +443,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("가드 장애가 발생하면 OAuth 시작 응답을 커밋하지 않고 장애를 반환한다")
   void oauthStartWithUnavailableGuardReturnsUncommittedUnavailableResponse() throws Exception {
     doThrow(new SessionStateUnavailableException(new RuntimeException("redis down")))
         .when(flowGuard)
@@ -446,6 +460,7 @@ class OAuthSecurityChainIntegrationTest {
   }
 
   @Test
+  @DisplayName("이전 콜백이 claim을 얻은 뒤 교체되면 새 콜백만 완료할 수 있다")
   void replacementAfterOldCallbackClaimsPreventsOldPublicationAndLetsTheNewCallbackComplete()
       throws Exception {
     OIDC.clearCapturedRequests();

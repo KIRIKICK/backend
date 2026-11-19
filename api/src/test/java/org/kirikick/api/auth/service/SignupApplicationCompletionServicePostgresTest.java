@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.domain.SignupApplication;
@@ -87,6 +88,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("같은 가입 신청의 요청을 직렬화하고 Spring 프록시를 통해 한 번만 커밋한다")
   void serializesSameApplicationAndCommitsOneCompletionThroughTheSpringProxy() throws Exception {
     SignupApplication application = pending("same-app");
     assertThat(AopUtils.isAopProxy(service)).isTrue();
@@ -122,6 +124,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("가입 신청 갱신 실패 시 회원과 OAuth 연동 및 완료 결과를 롤백한다")
   void rollsBackUserIdentityAndResultWhenFinalApplicationUpdateFails() throws Exception {
     SignupApplication application = pending("final-update");
     String triggerName = "signup_final_failure_" + UUID.randomUUID().toString().replace("-", "");
@@ -150,6 +153,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("첫 응답 유실 후 재시도하면 추가 저장 없이 최초 완료 결과를 반환한다")
   void returnsTheOriginalResultWithoutCreatingRowsWhenTheCallerLostTheFirstResponse()
       throws Exception {
     SignupApplication application = pending("lost-response");
@@ -169,6 +173,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("같은 OAuth 연동의 두 신청 중 유일성 제약을 위반한 트랜잭션을 롤백한다")
   void rollsBackTheUniqueConstraintLoserForTwoApplicationsWithTheSameIdentity() throws Exception {
     String subject = subject("cross-app");
     SignupApplication held = pending(subject);
@@ -205,6 +210,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("행 잠금 후 시각을 확인해 잠금 대기 중 만료된 신청을 거절한다")
   void samplesTheClockOnlyAfterTheRowLockAndRejectsAnApplicationThatExpiresWhileWaiting()
       throws Exception {
     SignupApplication application = pending("expires-while-waiting");
@@ -236,6 +242,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("신뢰된 OAuth 식별값이 불일치하면 DB에 쓰지 않는다")
   void rejectsWrongTrustedIdentityWithoutWriting() throws Exception {
     SignupApplication application = pending("identity-mismatch");
 
@@ -259,6 +266,7 @@ class SignupApplicationCompletionServicePostgresTest {
   }
 
   @Test
+  @DisplayName("재시도의 표시 이름이 다르면 기존 완료 결과를 유지한다")
   void preservesTheCompletedResultWhenTheRetryDisplayNameDiffersExactly() throws Exception {
     SignupApplication application = pending("exact-display-name");
     SignupApplicationCompletionService.CompletionResult initial = complete(application, "Name");

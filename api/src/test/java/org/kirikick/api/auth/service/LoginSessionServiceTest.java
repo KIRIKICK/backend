@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.hibernate.exception.JDBCConnectionException;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -50,6 +51,7 @@ import org.springframework.transaction.CannotCreateTransactionException;
 
 class LoginSessionServiceTest {
   @Test
+  @DisplayName("회전한 세션 소유자가 DB의 활성 회원일 때만 Refresh를 완료한다")
   void refreshesOnlyAfterTheRotatedSessionOwnerIsAnActiveDatabaseUser() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -68,6 +70,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("DB에 회원이 없으면 Refresh를 거절하고 회전한 세션을 폐기한다")
   void refreshRejectsMissingDatabaseUserAndRevokesTheRotatedSession() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -82,6 +85,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("조회한 회원이 회전한 세션의 소유자와 다르면 Refresh를 거절한다")
   void refreshRejectsDatabaseUserThatDoesNotOwnTheRotatedSession() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -96,6 +100,7 @@ class LoginSessionServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("각 비활성 회원 상태에서 Refresh를 거절한다")
   @EnumSource(
       value = UserStatus.class,
       names = {"WITHDRAWN", "SUSPENDED", "BANNED"})
@@ -114,6 +119,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("지원하는 DB 가용성 오류만 서비스 이용 불가로 변환한다")
   void mapsOnlyRecognizedDatabaseAvailabilityFailuresToUnavailable() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -130,6 +136,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("Refresh와 인가에서 SQLState가 없는 일시적 연결 오류를 장애로 변환한다")
   void mapsNullSqlStateTransientConnectionFailureFromRefreshAndAuthorizeToUnavailable() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -151,6 +158,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("가용성 오류의 근거가 없는 트랜잭션 시작 실패를 그대로 전파한다")
   void preservesTransactionCreationFailuresWithoutRecognizedAvailabilityEvidence() {
     for (RuntimeException failure :
         new RuntimeException[] {
@@ -170,6 +178,7 @@ class LoginSessionServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("지원하지 않는 SQLState가 있는 일시적 연결 오류를 그대로 전파한다")
   @ValueSource(strings = {"54000", "57014", ""})
   void preservesTransientConnectionFailureWithUnsupportedNonNullSqlState(String sqlState) {
     Fixture fixture = fixture();
@@ -184,6 +193,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("SQLState 없는 일시적 연결 오류 안의 도메인 실패를 유지한다")
   void preservesSemanticNegativeInsideNullSqlStateTransientConnectionFailure() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -199,6 +209,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("Spring 쿼리 시간 초과만 장애로 변환하고 원시 SQL 시간 초과는 유지한다")
   void mapsSpringQueryTimeoutButNotRawStatementTimeoutToUnavailable() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -218,6 +229,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("일반 리소스 오류에 감싸진 도메인 오류와 미지원 SQL 오류를 유지한다")
   void preservesSemanticAndUnsupportedSqlFailuresOverBroadResourceWrappers() {
     Fixture unsupported = fixture();
     IssuedSession unsupportedIssued = issued(unsupported.uuid(), 17L);
@@ -241,6 +253,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("SQLState나 도메인 거절이 없는 일반 리소스 오류를 장애로 변환한다")
   void mapsBroadResourceFailuresOnlyWithoutSqlStateOrSemanticNegative() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -253,6 +266,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("알 수 없는 조회 오류와 JWT 오류를 그대로 전파한다")
   void leavesUnknownLookupFailuresAndJwtFailuresUntouched() {
     Fixture lookup = fixture();
     IssuedSession issued = issued(lookup.uuid(), 17L);
@@ -274,6 +288,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("보상 실패 시 최초 오류를 유지하며 명시적 세션 폐기 실패는 전파한다")
   void keepsThePrimaryFailureWhenCompensationFailsAndPropagatesExplicitRevokeFailure() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -293,6 +308,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("예외 객체와 민감값을 제외한 이벤트만 로그에 남긴다")
   void logsSanitizedEventsWithoutThrowableOrSensitiveValues() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -325,6 +341,7 @@ class LoginSessionServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("유효하지 않은 클레임은 세션이나 회원을 조회하기 전에 거절한다")
   @ValueSource(
       strings = {
         "null-token",
@@ -358,6 +375,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("인가의 예상치 못한 NullPointerException을 그대로 전파한다")
   void authorizeDoesNotHideUnexpectedNullPointerExceptions() {
     Fixture fixture = fixture();
     Jwt token = mock(Jwt.class);
@@ -369,6 +387,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("활성 Redis 세션을 소유한 DB의 활성 회원만 인가한다")
   void authorizesOnlyAnActiveDatabaseUserOwningTheActiveRedisSession() {
     Fixture fixture = fixture();
     LoginSession session = session(fixture.uuid(), 17L);
@@ -381,6 +400,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("인가의 가용성 오류를 변환하고 Error는 그대로 전파한다")
   void mapsAvailabilityFailureFromAuthorizeButDoesNotCatchErrors() {
     Fixture fixture = fixture();
     Jwt token = token(fixture.uuid());
@@ -400,6 +420,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("원인에 쿼리 시간 초과가 있어도 도메인 거절을 그대로 전파한다")
   void preservesSemanticNegativeEvenWhenTheChainAlsoContainsAQueryTimeout() {
     Fixture fixture = fixture();
     IssuedSession issued = issued(fixture.uuid(), 17L);
@@ -412,6 +433,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("허용된 SQLState를 인식하고 예외 원인의 순환 탐색을 종료한다")
   void recognizesAllAllowedSqlStatesAndTerminatesCauseCycles() {
     for (String sqlState : new String[] {"08006", "53300", "57P03"}) {
       Fixture fixture = fixture();
@@ -437,6 +459,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("로그인 중 최초 런타임 예외를 유지하고 Error는 그대로 전파한다")
   void loginPreservesItsPrimaryRuntimeFailureButDoesNotCatchErrors() {
     Fixture fixture = fixture();
     User user = mock(User.class);
@@ -468,6 +491,7 @@ class LoginSessionServiceTest {
   }
 
   @Test
+  @DisplayName("Hibernate 방언은 연결 오류와 쿼리 시간 초과를 변환한다")
   void hibernateDialectTranslatesConnectionAndQueryTimeoutExceptions() {
     HibernateJpaDialect dialect = new HibernateJpaDialect();
 

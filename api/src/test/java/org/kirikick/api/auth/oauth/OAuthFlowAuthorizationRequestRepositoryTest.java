@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -34,6 +35,7 @@ class OAuthFlowAuthorizationRequestRepositoryTest {
       OAuthFlowAuthorizationRequestRepository.class.getName() + ".frontendOrigin";
 
   @Test
+  @DisplayName("잘못된 Origin 선택값은 OAuth 시작이나 기존 흐름 교체 전에 거절한다")
   void rejectsAnInvalidSelectorBeforeStartingOrReplacingAnExistingFlow() {
     RedisFlowClaimGuard guard = mock(RedisFlowClaimGuard.class);
     OAuthFlowAuthorizationRequestRepository repository = repository(guard);
@@ -50,6 +52,7 @@ class OAuthFlowAuthorizationRequestRepositoryTest {
   }
 
   @Test
+  @DisplayName("선택 Origin을 정규화해 연결하면서 프레임워크와 공급자 속성을 보존한다")
   void preservesFrameworkAndProviderAttributesWhileBindingTheCanonicalSelectedOrigin()
       throws Exception {
     RedisFlowClaimGuard guard = startedGuard();
@@ -71,6 +74,7 @@ class OAuthFlowAuthorizationRequestRepositoryTest {
   }
 
   @Test
+  @DisplayName("더 이상 유효하지 않은 claim을 거절하기 전에 저장된 Origin을 복원한다")
   void restoresTheBoundOriginBeforeAStaleClaimIsRejected() {
     RedisFlowClaimGuard guard = startedGuard();
     when(guard.claimOAuth(any(), any(), any(), any(), any()))
@@ -87,6 +91,7 @@ class OAuthFlowAuthorizationRequestRepositoryTest {
   }
 
   @Test
+  @DisplayName("기존 요청 형식에 Origin 속성이 없으면 설정된 기본 Origin을 사용한다")
   void usesTheConfiguredDefaultForAValidLegacyPayloadWithoutAnOriginAttribute() throws Exception {
     RedisFlowClaimGuard guard = startedGuard();
     when(guard.claimOAuth(any(), any(), any(), any(), any()))
@@ -104,6 +109,7 @@ class OAuthFlowAuthorizationRequestRepositoryTest {
   }
 
   @ParameterizedTest
+  @DisplayName("저장된 Origin이 잘못되면 OAuth claim 처리 전에 거절한다")
   @MethodSource("invalidStoredFrontendOrigins")
   void rejectsAnInvalidStoredOriginBeforeClaimingTheFlow(Object storedOrigin) {
     RedisFlowClaimGuard guard = startedGuard();
@@ -123,6 +129,7 @@ class OAuthFlowAuthorizationRequestRepositoryTest {
   }
 
   @Test
+  @DisplayName("저장된 Origin이 허용 목록에서 제거되면 OAuth claim 처리 전에 거절한다")
   void rejectsAnOriginRemovedFromTheAllowedPolicyBeforeClaimingTheFlow() {
     RedisFlowClaimGuard guard = startedGuard();
     OAuthFlowAuthorizationRequestRepository startRepository = repository(guard);

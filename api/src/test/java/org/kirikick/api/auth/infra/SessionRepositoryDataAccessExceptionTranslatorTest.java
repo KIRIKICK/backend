@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.session.MapSession;
@@ -16,6 +17,7 @@ import org.springframework.session.SessionRepository;
 class SessionRepositoryDataAccessExceptionTranslatorTest {
 
   @Test
+  @DisplayName("위임 저장소의 모든 세션 작업에서 데이터 접근 오류를 변환한다")
   void translatesDelegateDataAccessFailuresForEverySessionOperation() {
     SessionRepository<MapSession> delegate = delegate();
     SessionRepository<MapSession> repository =
@@ -37,6 +39,7 @@ class SessionRepositoryDataAccessExceptionTranslatorTest {
   }
 
   @Test
+  @DisplayName("데이터 접근과 무관한 오류는 그대로 전파한다")
   void leavesNonDataAccessFailuresUntouched() {
     SessionRepository<MapSession> delegate = delegate();
     SessionRepository<MapSession> repository =

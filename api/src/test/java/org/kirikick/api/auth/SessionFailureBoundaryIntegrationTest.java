@@ -2,6 +2,7 @@ package org.kirikick.api.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.infra.SessionRepositoryDataAccessExceptionTranslator;
 import org.kirikick.api.auth.infra.SessionStateUnavailableFilter;
@@ -40,6 +41,7 @@ class SessionFailureBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("세션 필터는 데이터 접근 예외를 변환하는 기본 저장소를 사용한다")
   void sessionRepositoryFilterUsesPrimaryFailureTranslatingRepository() {
     Object filterRepository =
         ReflectionTestUtils.getField(springSessionRepositoryFilter, "sessionRepository");
@@ -52,6 +54,7 @@ class SessionFailureBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("Redis 세션 저장소는 온보딩 증명을 즉시 기록한다")
   void redisSessionRepositoryFlushesProofWritesImmediately() {
     Object delegate = ReflectionTestUtils.getField(sessionRepository, "delegate");
 

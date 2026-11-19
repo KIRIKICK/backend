@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.OAuthProvider;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
@@ -18,6 +19,7 @@ import org.mockito.ArgumentMatchers;
 
 class SignupApplicationPublicationServiceTest {
   @Test
+  @DisplayName("고정 만료 시각이 지난 증명을 저장 전에 거절한다")
   void rejectsProofWhoseFixedExpiryHasAlreadyPassedBeforeSaving() {
     SignupApplicationRepository applications = mock(SignupApplicationRepository.class);
     Instant now = Instant.parse("2026-11-04T00:05:00Z");

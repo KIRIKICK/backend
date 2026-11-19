@@ -25,6 +25,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.OAuthIdentity;
@@ -74,6 +75,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("인증된 회원의 프로필만 반환하고 Cache-Control에 no-store를 적용한다")
   void returnsOnlyTheAuthenticatedUsersProfileWithNoStore() throws Exception {
     User user = users.saveAndFlush(User.create("프로필회원", "https://image.example/profile.png"));
     identities.saveAndFlush(
@@ -107,6 +109,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("회원마다 자신의 프로필만 반환하며 null 이미지를 그대로 유지한다")
   void keepsUsersAndNullableProfileImagesIsolated() throws Exception {
     User first = users.saveAndFlush(User.create("첫회원", null));
     User second = users.saveAndFlush(User.create("둘회원", "https://image.example/second.png"));
@@ -127,6 +130,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("인증이 없거나 계정이 비활성이면 프로필 요청을 거절한다")
   void rejectsMissingAuthenticationAndInactiveAccounts() throws Exception {
     mvc.perform(get("/users/me/profile"))
         .andExpect(status().isUnauthorized())
@@ -151,6 +155,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("설정된 Origin에서만 Authorization 헤더의 CORS 사전 요청을 허용한다")
   void allowsAuthorizationPreflightOnlyFromTheConfiguredOrigin() throws Exception {
     mvc.perform(
             options("/users/me/profile")
@@ -172,6 +177,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("null 이미지와 비어 있는 연동 공급자 목록을 응답에 포함한다")
   void preservesANullImageFieldAndAnEmptyProviderArray() throws Exception {
     User user = users.saveAndFlush(User.create("미연결회원", null));
     LoginGrant grant = logins.login(user);
@@ -193,6 +199,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("유효하지 않거나 만료됐거나 폐기된 Bearer 토큰을 거절한다")
   void rejectsInvalidExpiredAndRevokedBearerTokens() throws Exception {
     User user = users.saveAndFlush(User.create("인증검증회원", null));
     LoginGrant grant = logins.login(user);
@@ -224,6 +231,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("쿠키나 HTTP 세션만으로는 프로필 요청을 인증하지 않는다")
   void doesNotAuthenticateUsingOnlyCookiesOrAnHttpSession() throws Exception {
     User user = users.saveAndFlush(User.create("쿠키회원", null));
     LoginGrant grant = logins.login(user);
@@ -239,6 +247,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("인가 후 회원이 사라지면 계정을 찾을 수 없음 오류를 반환한다")
   void mapsAMissingUserAfterAuthorizationToAccountNotFound() throws Exception {
     User user = users.saveAndFlush(User.create("삭제경합회원", null));
     LoginGrant grant = logins.login(user);
@@ -256,6 +265,7 @@ class UserProfileBoundaryIntegrationTest {
   }
 
   @Test
+  @DisplayName("필터와 프로필 조회의 상태 장애를 서비스 이용 불가로 변환한다")
   void mapsFilterAndBusinessStateOutagesToServiceUnavailable() throws Exception {
     User user = users.saveAndFlush(User.create("장애회원", null));
     identities.saveAndFlush(

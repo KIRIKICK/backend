@@ -10,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
@@ -45,6 +46,7 @@ class AuthErrorResponseEncodingIntegrationTest {
   }
 
   @Test
+  @DisplayName("인증 진입점은 한글 오류 메시지를 UTF-8로 반환한다")
   void authenticationEntryPointPreservesKoreanMessageAsUtf8() throws Exception {
     HttpResponse<byte[]> response =
         client.send(
@@ -55,6 +57,7 @@ class AuthErrorResponseEncodingIntegrationTest {
   }
 
   @Test
+  @DisplayName("Origin 검증 필터는 한글 오류 메시지를 UTF-8로 반환한다")
   void originValidationFilterPreservesKoreanMessageAsUtf8() throws Exception {
     HttpResponse<byte[]> csrf =
         client.send(
@@ -75,6 +78,7 @@ class AuthErrorResponseEncodingIntegrationTest {
   }
 
   @Test
+  @DisplayName("세션 인가 필터는 한글 오류 메시지를 UTF-8로 반환한다")
   void sessionAuthorizationFilterPreservesKoreanMessageAsUtf8() throws Exception {
     LoginGrant grant = logins.login(users.saveAndFlush(User.create("인코딩검증", null)));
     sessions.revoke(grant.session().id());

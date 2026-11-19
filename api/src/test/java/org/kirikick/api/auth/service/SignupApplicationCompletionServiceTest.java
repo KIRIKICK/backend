@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.hibernate.exception.ConstraintViolationException;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -40,6 +41,7 @@ class SignupApplicationCompletionServiceTest {
   private static final Instant NOW = Instant.parse("2026-11-04T00:00:00Z");
 
   @ParameterizedTest
+  @DisplayName("잘못된 명령을 저장소에 접근하기 전에 거절한다")
   @MethodSource("invalidCommands")
   void rejectsInvalidCommandBeforeAccessingRepositories(
       UUID applicationId, OAuthProvider provider, String providerSubject, String displayName) {
@@ -56,6 +58,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("잠금 조회한 가입 신청이 없으면 찾을 수 없음 오류를 반환한다")
   void reportsNotFoundWhenLockedApplicationIsMissing() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -69,6 +72,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("OAuth 식별값이 불일치하면 DB에 쓰지 않는다")
   void rejectsMismatchedIdentityWithoutWrites() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -87,6 +91,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("대기 중인 신청이 만료되면 회원과 OAuth 연동을 생성하지 않는다")
   void rejectsExpiredPendingApplicationWithoutCreatingUserOrIdentity() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -103,6 +108,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("완료된 신청에 동일한 표시 이름으로 재시도하면 최초 회원을 반환한다")
   void returnsOriginalUserForCompletedApplicationWithExactDisplayName() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -132,6 +138,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("완료된 신청에 다른 표시 이름을 보내면 회원 조회 없이 거절한다")
   void rejectsDifferentCompletedDisplayNameWithoutLookingUpUser() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -152,6 +159,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("완료된 신청이 참조하는 회원이 없으면 불변식 위반 오류를 발생시킨다")
   void failsInvariantWhenCompletedApplicationReferencesMissingUser() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -173,6 +181,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("회원과 OAuth 연동 및 가입 완료 결과를 순서대로 저장한다")
   void persistsUserIdentityAndCompletionInOrder() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -209,6 +218,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @Test
+  @DisplayName("OAuth 연동 유일성 위반만 도메인 오류로 변환한다")
   void translatesOnlyDuplicateOAuthIdentityConstraintToDomainError() {
     Fixture fixture = fixture();
     SignupApplicationCompletionService.CompletionCommand command = command();
@@ -241,6 +251,7 @@ class SignupApplicationCompletionServiceTest {
   }
 
   @ParameterizedTest
+  @DisplayName("다른 OAuth 연동 저장 오류는 그대로 전파한다")
   @MethodSource("otherIdentityInsertFailures")
   void propagatesOtherIdentityInsertFailuresUnchanged(DataIntegrityViolationException failure) {
     Fixture fixture = fixture();

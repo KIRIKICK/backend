@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.exception.ErrorCode;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 class UserExceptionHandlerTest {
   @Test
+  @DisplayName("회원 예외 처리기는 회원 컨트롤러에만 적용된다")
   void handlesOnlyUserControllers() {
     assertThat(
             UserExceptionHandler.class
@@ -22,6 +24,7 @@ class UserExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("회원 오류를 매핑하며 입력 검증 오류의 응답 형식을 유지한다")
   void mapsUserErrorsWithoutChangingTheValidationErrorContract() {
     var handler = new UserExceptionHandler();
     var statuses =
@@ -42,6 +45,7 @@ class UserExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("다른 도메인 오류를 회원 오류로 분류하지 않는다")
   void doesNotReclassifyOtherDomainErrors() {
     ErrorCode otherDomain = () -> "다른 도메인 오류";
     DomainException failure = new DomainException(otherDomain);

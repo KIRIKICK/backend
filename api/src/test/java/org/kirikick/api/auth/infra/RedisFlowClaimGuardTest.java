@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.support.RedisTestSupport;
 
@@ -16,6 +17,7 @@ class RedisFlowClaimGuardTest {
   private static final Instant NOW = Instant.parse("2026-11-03T00:00:00Z");
 
   @Test
+  @DisplayName("슬롯과 식별값 조합이 정확히 일치할 때만 상태를 변경한다")
   void transitionsOnlyTheExactSlotAndTuple() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -51,6 +53,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("가입 lease는 고정 유효기간 동안 사용 중이며 만료되면 정리한다")
   void signupLeaseIsBusyUntilItsFixedLeaseExpiresThenCleansUp() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -74,6 +77,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("가입 완료는 정확히 일치하는 유효한 claim만 발행하도록 허용한다")
   void finishSignupPermitsPublicationOnlyForItsExactLiveClaim() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -93,6 +97,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("Redis 서버 시계에 의존하지 않고 만료 시 정리 권한을 반환한다")
   void expiryReturnsCleanupPermitWithoutRelyingOnRedisWallClock() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -108,6 +113,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("같은 소유자의 OAuth claim은 멱등 처리하고 다른 claim은 재사용으로 처리한다")
   void oauthClaimIsIdempotentForItsOwnerAndReplaysForAnotherClaim() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -126,6 +132,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("OAuth 종료는 정확히 일치해야 하며 잘못된 종료 입력은 장애로 처리한다")
   void finishOAuthEndIsExactAndBadFinishShapeIsUnavailable() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -172,6 +179,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("증명과 claim의 Redis TTL은 허용 기간 이후까지 유지된다")
   void proofAndClaimTtlsAreRetainedBeyondPermissionWithoutWallClockAssumptions() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -190,6 +198,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("증명과 claim은 만료 시 각각의 정리 권한을 반환한다")
   void proofAndClaimExpiryReturnTheirDistinctCleanupPermits() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -211,6 +220,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("가입 claim이 만료되면 발행할 수 없고 null 인수는 장애로 처리한다")
   void expiredSignupFinishCannotPermitPublicationAndNullArgumentsFailUnavailable() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);
@@ -241,6 +251,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("동시 가입 claim 중 정확히 하나만 성공한다")
   void concurrentSignupClaimHasExactlyOneWinner() throws Exception {
     try (var redis = RedisTestSupport.create();
         var pool = Executors.newFixedThreadPool(2)) {
@@ -265,6 +276,7 @@ class RedisFlowClaimGuardTest {
   }
 
   @Test
+  @DisplayName("보관 기간은 제한되고 Redis 키 타입이나 해시 형식이 틀리면 장애로 처리한다")
   void retentionIsBoundedAndKeyTypeOrMalformedHashFailsUnavailable() {
     try (var redis = RedisTestSupport.create()) {
       var guard = guard(redis);

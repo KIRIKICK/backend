@@ -2,6 +2,7 @@ package org.kirikick.api.auth.service;
 
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.kirikick.api.auth.domain.IssuedSession;
 import org.kirikick.api.auth.domain.LoginGrant;
 import org.kirikick.api.auth.domain.LoginSession;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 
+@RequiredArgsConstructor
 public class LoginSessionService {
   private static final Logger log = LoggerFactory.getLogger(LoginSessionService.class);
   private static final String DB_UNAVAILABLE_LOG = "auth-member-state-unavailable exceptionType={}";
@@ -24,13 +26,6 @@ public class LoginSessionService {
   private final RedisRefreshSessionStore sessions;
   private final JwtTokenService jwtTokens;
   private final UserRepository users;
-
-  public LoginSessionService(
-      RedisRefreshSessionStore sessions, JwtTokenService jwtTokens, UserRepository users) {
-    this.sessions = sessions;
-    this.jwtTokens = jwtTokens;
-    this.users = users;
-  }
 
   public LoginGrant login(User user) {
     if (user.getId() == null || user.getUuid() == null || user.getStatus() != UserStatus.ACTIVE) {

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.PersistenceException;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -17,6 +18,7 @@ class SessionStateUnavailableFilterTest {
       new SessionStateUnavailableFilter(new ObjectMapper(), sessions());
 
   @Test
+  @DisplayName("준비된 리다이렉트와 쿠키를 서비스 이용 불가 응답으로 대체한다")
   void replacesPreparedRedirectAndCookieWithUnavailableResponse() throws Exception {
     MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -39,6 +41,7 @@ class SessionStateUnavailableFilterTest {
   }
 
   @Test
+  @DisplayName("서비스 이용 불가 응답이 이미 커밋되면 예외를 다시 던진다")
   void rethrowsWhenUnavailableResponseIsAlreadyCommitted() throws Exception {
     MockHttpServletResponse response = new MockHttpServletResponse();
     SessionStateUnavailableException failure =
@@ -61,6 +64,7 @@ class SessionStateUnavailableFilterTest {
   }
 
   @Test
+  @DisplayName("세션 장애와 무관한 IllegalStateException은 응답을 바꾸지 않고 다시 던진다")
   void rethrowsAnUnrelatedIllegalStateExceptionWithoutRewritingTheResponse() {
     MockHttpServletResponse response = new MockHttpServletResponse();
     IllegalStateException failure = new IllegalStateException("unrelated");
@@ -81,6 +85,7 @@ class SessionStateUnavailableFilterTest {
   }
 
   @Test
+  @DisplayName("JPA 영속성 예외는 응답을 바꾸지 않고 다시 던진다")
   void rethrowsJpaPersistenceExceptionWithoutRewritingTheResponse() {
     MockHttpServletResponse response = new MockHttpServletResponse();
     PersistenceException failure = new PersistenceException("database unavailable");
