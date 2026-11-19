@@ -25,7 +25,7 @@ public record PublicationInput(
         || !choiceIds.contains(correctChoiceId)) {
       throw new IllegalArgumentException("서로 다른 선택지 4개와 그중 정답이 필요합니다.");
     }
-    choiceIds = choiceIds.stream().sorted().toList();
+    choiceIds = List.copyOf(choiceIds.stream().sorted().toList());
   }
 
   private static boolean isId(Long id) {
