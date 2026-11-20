@@ -25,6 +25,7 @@ backend/
 
 - [USER: 회원 프로필](docs/domain/user.md)
 - [AUTH: 인증 상태·Redis 운영 정책](docs/domain/auth.md)
+- [출제: Phase 1 저장 계약과 오류 코드](docs/domain/publication.md)
 
 ## DEV 배포
 
