@@ -75,6 +75,7 @@ public class Game extends BaseCreatedTimeEntity {
         || persistedChoices.size() != 4
         || persistedChoices.stream()
             .anyMatch(choice -> choice.getId() == null || !id.equals(choice.getGame().getId()))
+        || persistedChoices.stream().map(Choice::getId).distinct().count() != 4
         || persistedChoices.stream().noneMatch(choice -> correctChoiceId.equals(choice.getId()))) {
       throw new DomainException(GameErrorCode.INCOMPLETE_GAME);
     }
