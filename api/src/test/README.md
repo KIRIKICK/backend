@@ -40,6 +40,8 @@ class UserRepositoryTest {}
 
 ## PostgreSQL Testcontainers
 
+백엔드 Gradle 테스트 JVM의 기본 시간대는 `Asia/Seoul`입니다. 시간대 교차 검증도 일반 `:api:test`에 포함되며, PostgreSQL 세션에는 JVM과 다른 시간대를 설정합니다.
+
 Docker가 실행 중이면 별도 DB URL·계정·`.env` 없이 PostgreSQL 테스트가 자동 실행됩니다.
 
 ```sh
