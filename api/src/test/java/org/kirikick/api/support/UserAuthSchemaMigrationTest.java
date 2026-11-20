@@ -24,6 +24,7 @@ import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.SignupApplication;
@@ -51,7 +52,7 @@ class UserAuthSchemaMigrationTest {
 
     assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
     assertThat(flyway.migrate().migrationsExecuted).isZero();
-    validateHibernateMappings();
+    validateHibernateMappings(User.class, OAuthIdentity.class, SignupApplication.class);
 
     try (Connection connection = connectionInSchema()) {
       assertThat(columnExists(connection, "users", "birth_year")).isTrue();
@@ -66,7 +67,7 @@ class UserAuthSchemaMigrationTest {
 
   @Test
   void createsOnlyTheAgreedColumnsWithTheirDatabaseContracts() throws SQLException {
-    migrate();
+    migrateTo("2");
 
     try (Connection connection = connectionInSchema()) {
       assertThat(tableNames(connection))
@@ -148,8 +149,8 @@ class UserAuthSchemaMigrationTest {
           () ->
               execute(
                   connection,
-                  "insert into signup_applications "
-                      + "(id, provider, provider_subject, expires_at, created_at, updated_at) values ("
+                  "insert into signup_applications (id, provider, provider_subject, expires_at,"
+                      + " created_at, updated_at) values ("
                       + quote(UUID.randomUUID().toString())
                       + "::uuid, 'UNKNOWN', 'subject', now(), now(), now())"),
           "23514",
@@ -353,7 +354,29 @@ class UserAuthSchemaMigrationTest {
     }
   }
 
+  @Test
+  @DisplayName("기본 제품 V1·V2만 적용하면 AUTH·USER 테이블과 매핑만 존재한다")
+  void migratesOnlyProductSchema() throws SQLException {
+    Flyway flyway = migrateTo("2");
+    assertThat(flyway.info().applied())
+        .filteredOn(info -> info.getVersion() != null)
+        .extracting(info -> info.getVersion().getVersion())
+        .containsExactly("1", "2");
+    validateHibernateMappings(User.class, OAuthIdentity.class, SignupApplication.class);
+    try (Connection connection = connectionInSchema()) {
+      assertThat(tableNames(connection))
+          .containsExactlyInAnyOrder(
+              "flyway_schema_history", "users", "oauth_identities", "signup_applications");
+    }
+  }
+
   private Flyway migrate() {
+    Flyway flyway = configuredFlyway();
+    flyway.migrate();
+    return flyway;
+  }
+
+  private Flyway migrateTo(String targetVersion) {
     Flyway flyway =
         Flyway.configure()
             .dataSource(url, username, password)
@@ -361,12 +384,27 @@ class UserAuthSchemaMigrationTest {
             .defaultSchema(schema)
             .createSchemas(true)
             .cleanDisabled(true)
+            .target(targetVersion)
             .load();
     flyway.migrate();
     return flyway;
   }
 
-  private void validateHibernateMappings() {
+  private Flyway configuredFlyway() {
+    Flyway flyway =
+        Flyway.configure()
+            .dataSource(url, username, password)
+            .schemas(schema)
+            .defaultSchema(schema)
+            .createSchemas(true)
+            .cleanDisabled(true)
+            .locations("classpath:db/migration")
+            .target("2")
+            .load();
+    return flyway;
+  }
+
+  private void validateHibernateMappings(Class<?>... entities) {
     StandardServiceRegistry registry =
         new StandardServiceRegistryBuilder()
             .applySettings(
@@ -380,13 +418,11 @@ class UserAuthSchemaMigrationTest {
                     "hibernate.physical_naming_strategy",
                         "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy"))
             .build();
-    try (SessionFactory ignored =
-        new MetadataSources(registry)
-            .addAnnotatedClass(User.class)
-            .addAnnotatedClass(OAuthIdentity.class)
-            .addAnnotatedClass(SignupApplication.class)
-            .buildMetadata()
-            .buildSessionFactory()) {
+    MetadataSources mappings = new MetadataSources(registry);
+    for (Class<?> entity : entities) {
+      mappings.addAnnotatedClass(entity);
+    }
+    try (SessionFactory ignored = mappings.buildMetadata().buildSessionFactory()) {
       // Building the SessionFactory performs Hibernate validate.
     } finally {
       StandardServiceRegistryBuilder.destroy(registry);
@@ -413,8 +449,8 @@ class UserAuthSchemaMigrationTest {
     try (Statement statement = connection.createStatement()) {
       var resultSet =
           statement.executeQuery(
-              "insert into users (uuid, display_name, profile_image_url, birth_year, status, withdrawn_at, created_at, updated_at) "
-                  + "values ("
+              "insert into users (uuid, display_name, profile_image_url, birth_year, status,"
+                  + " withdrawn_at, created_at, updated_at) values ("
                   + quote(uuid.toString())
                   + "::uuid, 'display-name', "
                   + profileValue

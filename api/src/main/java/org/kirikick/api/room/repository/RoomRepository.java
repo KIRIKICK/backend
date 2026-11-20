@@ -1,0 +1,50 @@
+package org.kirikick.api.room.repository;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import org.kirikick.api.room.domain.Room;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+public interface RoomRepository extends JpaRepository<Room, Long> {
+
+  @Transactional(propagation = Propagation.MANDATORY)
+  @Query(value = "select id from rooms where id = :id for update", nativeQuery = true)
+  Optional<Long> lockById(@Param("id") Long id);
+
+  // A scalar projection does not reuse a Room loaded before the lock wait.
+  @Query(
+      """
+      select r.status as status, r.resultState as resultState,
+             r.openedAt as openedAt, r.closesAt as closesAt
+      from Room r
+      where r.id = :id
+      """)
+  Optional<State> findCurrentState(@Param("id") Long id);
+
+  @Query(
+      value =
+          """
+          select id from rooms
+          where result_state = 'NOT_READY'
+            and opened_at is not null and closes_at is not null
+            and (status = 'CLOSED' or closes_at <= :asOf)
+          """,
+      nativeQuery = true)
+  List<Long> findUnsettledCandidateIds(@Param("asOf") Instant asOf);
+
+  interface State {
+
+    Room.Status getStatus();
+
+    Room.ResultState getResultState();
+
+    Instant getOpenedAt();
+
+    Instant getClosesAt();
+  }
+}
