@@ -15,6 +15,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.kirikick.api.common.entity.BaseCreatedTimeEntity;
+import org.kirikick.api.common.exception.DomainException;
+import org.kirikick.api.game.domain.exception.GameErrorCode;
 import org.kirikick.api.question.domain.QuestionPreset;
 import org.kirikick.api.room.domain.Room;
 
@@ -56,13 +58,13 @@ public class Game extends BaseCreatedTimeEntity {
 
   public void initializeCorrectChoice(Choice choice) {
     if (correctChoiceId != null) {
-      throw new IllegalStateException("정답은 이미 연결되어 있습니다.");
+      throw new DomainException(GameErrorCode.CORRECT_CHOICE_ALREADY_INITIALIZED);
     }
     if (id == null
         || choice == null
         || choice.getId() == null
         || !id.equals(choice.getGame().getId())) {
-      throw new IllegalArgumentException("정답은 저장된 같은 Game의 선택지여야 합니다.");
+      throw new DomainException(GameErrorCode.INVALID_CORRECT_CHOICE);
     }
     correctChoiceId = choice.getId();
   }
@@ -74,7 +76,7 @@ public class Game extends BaseCreatedTimeEntity {
         || persistedChoices.stream()
             .anyMatch(choice -> choice.getId() == null || !id.equals(choice.getGame().getId()))
         || persistedChoices.stream().noneMatch(choice -> correctChoiceId.equals(choice.getId()))) {
-      throw new IllegalStateException("Game 공개에는 저장된 선택지 4개와 연결된 정답이 필요합니다.");
+      throw new DomainException(GameErrorCode.INCOMPLETE_GAME);
     }
   }
 }

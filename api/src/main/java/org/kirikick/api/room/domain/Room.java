@@ -19,7 +19,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.DynamicUpdate;
 import org.kirikick.api.common.entity.BaseCreatedTimeEntity;
+import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.reward.domain.RewardPreset;
+import org.kirikick.api.room.domain.exception.RoomErrorCode;
 import org.kirikick.api.user.domain.User;
 
 @Getter
@@ -66,10 +68,10 @@ public class Room extends BaseCreatedTimeEntity {
 
   public void publish(Instant openedAt, Instant closesAt) {
     if (status != Status.OPEN || this.openedAt != null || this.closesAt != null) {
-      throw new IllegalStateException("조립 중인 방만 공개할 수 있습니다.");
+      throw new DomainException(RoomErrorCode.ROOM_ALREADY_PUBLISHED);
     }
     if (openedAt == null || !openedAt.plus(Duration.ofHours(24)).equals(closesAt)) {
-      throw new IllegalArgumentException("마감 시각은 공개 시각에서 24시간 뒤여야 합니다.");
+      throw new DomainException(RoomErrorCode.INVALID_CLOSING_TIME);
     }
     this.openedAt = openedAt;
     this.closesAt = closesAt;
@@ -77,7 +79,7 @@ public class Room extends BaseCreatedTimeEntity {
 
   public void closeIntake() {
     if (openedAt == null || closesAt == null) {
-      throw new IllegalStateException("공개 시각이 불완전한 방은 접수 종료할 수 없습니다.");
+      throw new DomainException(RoomErrorCode.INCOMPLETE_PUBLICATION_TIME);
     }
     status = Status.CLOSED;
   }

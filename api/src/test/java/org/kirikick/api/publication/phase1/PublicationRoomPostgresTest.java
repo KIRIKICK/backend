@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.game.domain.Choice;
@@ -31,6 +32,7 @@ import org.kirikick.api.question.domain.QuestionPreset;
 import org.kirikick.api.question.domain.QuestionPresetChoice;
 import org.kirikick.api.reward.domain.RewardPreset;
 import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.domain.exception.RoomErrorCode;
 import org.kirikick.api.room.repository.RoomRepository;
 import org.kirikick.api.user.domain.User;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
@@ -440,7 +442,11 @@ class PublicationRoomPostgresTest {
                 "G2 last-stage DB opened_at=%s closes_at=%s grace=%s stored expiry=%s room=%d game=%d%n",
                 opened.getOpenedAt(), opened.getClosesAt(), grace, expiry, ids[0], ids[1]);
           } else {
-            assertThat(failure).isInstanceOf(IllegalArgumentException.class);
+            assertThat(failure)
+                .isInstanceOfSatisfying(
+                    DomainException.class,
+                    e ->
+                        assertThat(e.getErrorCode()).isEqualTo(RoomErrorCode.INVALID_CLOSING_TIME));
             assertThat(count(jdbc, "rooms", ids[0])).isZero();
             assertThat(count(jdbc, "games", ids[1])).isZero();
             assertThat(choiceCount(jdbc, ids[1])).isZero();

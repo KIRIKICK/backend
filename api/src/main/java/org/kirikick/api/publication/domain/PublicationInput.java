@@ -1,6 +1,8 @@
 package org.kirikick.api.publication.domain;
 
 import java.util.List;
+import org.kirikick.api.common.exception.DomainException;
+import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 
 public record PublicationInput(
     Kind kind,
@@ -15,7 +17,7 @@ public record PublicationInput(
         || !isId(questionPresetId)
         || (kind == Kind.NK_CREATE && (roomId != null || !isId(rewardPresetId)))
         || (kind == Kind.NK_KICK_ADD && (!isId(roomId) || rewardPresetId != null))) {
-      throw new IllegalArgumentException("출제 종류에 맞는 대상과 질문이 필요합니다.");
+      throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_TARGET);
     }
     if (choiceIds == null
         || choiceIds.size() != 4
@@ -23,7 +25,7 @@ public record PublicationInput(
         || choiceIds.stream().distinct().count() != 4
         || !isId(correctChoiceId)
         || !choiceIds.contains(correctChoiceId)) {
-      throw new IllegalArgumentException("서로 다른 선택지 4개와 그중 정답이 필요합니다.");
+      throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_CHOICES);
     }
     choiceIds = List.copyOf(choiceIds.stream().sorted().toList());
   }

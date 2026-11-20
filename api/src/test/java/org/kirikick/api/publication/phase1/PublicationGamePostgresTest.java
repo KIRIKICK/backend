@@ -16,8 +16,10 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.game.domain.Choice;
 import org.kirikick.api.game.domain.Game;
+import org.kirikick.api.game.domain.exception.GameErrorCode;
 import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.question.domain.QuestionPreset;
@@ -477,7 +479,9 @@ class PublicationGamePostgresTest {
               .param("game", game.getId())
               .update();
           assertThatThrownBy(() -> game.verifyComplete(persistedChoices))
-              .isInstanceOf(IllegalStateException.class);
+              .isInstanceOfSatisfying(
+                  DomainException.class,
+                  e -> assertThat(e.getErrorCode()).isEqualTo(GameErrorCode.INCOMPLETE_GAME));
           status.setRollbackOnly();
         });
     assertThat(

@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.publication.domain.PublicationInput.Kind;
+import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 
 class PublicationInputTest {
 
@@ -22,5 +24,17 @@ class PublicationInputTest {
     assertThat(input.choiceIds()).containsExactly(1L, 2L, 3L, 4L);
     assertThatThrownBy(() -> input.choiceIds().add(5L))
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  @DisplayName("방 생성에 기존 방 ID를 지정하면 출제 대상 오류로 거절한다")
+  void rejectsRoomIdForRoomCreation() {
+    assertThatThrownBy(
+            () -> new PublicationInput(Kind.NK_CREATE, 9L, 1L, 2L, List.of(1L, 2L, 3L, 4L), 1L))
+        .isInstanceOfSatisfying(
+            DomainException.class,
+            e ->
+                assertThat(e.getErrorCode())
+                    .isEqualTo(PublicationErrorCode.INVALID_PUBLICATION_TARGET));
   }
 }

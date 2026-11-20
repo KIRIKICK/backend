@@ -20,9 +20,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationInput.Kind;
+import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataAccessException;
@@ -334,7 +336,11 @@ class PublicationRecordPostgresTest {
       assertThatThrownBy(() ->
               inTransaction(
                   context, ignored -> repository(context).findForUpdate(userId, "missing-fields")))
-          .isInstanceOf(PublicationIdempotencyRepository.UnreadableRecordException.class);
+          .isInstanceOfSatisfying(
+              DomainException.class,
+              e ->
+                  assertThat(e.getErrorCode())
+                      .isEqualTo(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD));
       assertThat(
               jdbc.sql(
                       "select normalized_input::text from publication_idempotency where user_id = :userId and request_key = 'missing-fields'")
@@ -362,7 +368,11 @@ class PublicationRecordPostgresTest {
       assertThatThrownBy(() ->
               inTransaction(
                   context, ignored -> repository(context).findForUpdate(userId, "wrong-kind-type")))
-          .isInstanceOf(PublicationIdempotencyRepository.UnreadableRecordException.class);
+          .isInstanceOfSatisfying(
+              DomainException.class,
+              e ->
+                  assertThat(e.getErrorCode())
+                      .isEqualTo(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD));
     });
   }
 
@@ -371,7 +381,11 @@ class PublicationRecordPostgresTest {
   void rejectsThreeChoicesBeforeAClaimCanBeStored() {
     assertThatThrownBy(
             () -> new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L), 1L))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOfSatisfying(
+            DomainException.class,
+            e ->
+                assertThat(e.getErrorCode())
+                    .isEqualTo(PublicationErrorCode.INVALID_PUBLICATION_CHOICES));
   }
 
   @Test
@@ -379,7 +393,11 @@ class PublicationRecordPostgresTest {
   void rejectsFiveChoicesBeforeAClaimCanBeStored() {
     assertThatThrownBy(() ->
             new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L, 5L), 1L))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOfSatisfying(
+            DomainException.class,
+            e ->
+                assertThat(e.getErrorCode())
+                    .isEqualTo(PublicationErrorCode.INVALID_PUBLICATION_CHOICES));
   }
 
   @Test
@@ -387,7 +405,11 @@ class PublicationRecordPostgresTest {
   void rejectsDuplicateChoicesBeforeAClaimCanBeStored() {
     assertThatThrownBy(
             () -> new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 3L), 1L))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOfSatisfying(
+            DomainException.class,
+            e ->
+                assertThat(e.getErrorCode())
+                    .isEqualTo(PublicationErrorCode.INVALID_PUBLICATION_CHOICES));
   }
 
   @Test
@@ -604,8 +626,11 @@ class PublicationRecordPostgresTest {
                     repository(context)
                         .completeClaim(claim, gameId, Instant.parse("2026-11-21T00:30:00Z"));
                   }))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("1건");
+          .isInstanceOfSatisfying(
+              DomainException.class,
+              e ->
+                  assertThat(e.getErrorCode())
+                      .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
       assertThat(
               jdbc.sql(
                       "select count(*) from publication_idempotency where user_id = :userId and request_key = 'cas'")
@@ -623,8 +648,11 @@ class PublicationRecordPostgresTest {
                   ignored ->
                       repository(context)
                           .completeClaim(stale, gameId, Instant.parse("2026-11-21T00:30:00Z"))))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("1건");
+          .isInstanceOfSatisfying(
+              DomainException.class,
+              e ->
+                  assertThat(e.getErrorCode())
+                      .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
       assertThat(
               jdbc.sql(
                       """
@@ -694,8 +722,11 @@ class PublicationRecordPostgresTest {
             assertThat(cause(failure).getSQLState()).isEqualTo("22008");
           } else {
             assertThat(failure)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("1건");
+                .isInstanceOfSatisfying(
+                    DomainException.class,
+                    e ->
+                        assertThat(e.getErrorCode())
+                            .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
           }
         }
         default -> assertThat(failure).isInstanceOf(RuntimeException.class);

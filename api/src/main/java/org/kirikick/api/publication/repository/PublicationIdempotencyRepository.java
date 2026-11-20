@@ -15,8 +15,10 @@ import java.util.Objects;
 import java.util.Optional;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.publication.domain.PublicationIdempotencyRecord;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -92,7 +94,7 @@ public class PublicationIdempotencyRepository {
                         row.getObject("record_expires_at", OffsetDateTime.class).toInstant()))
             .list();
     if (!completed.equals(List.of(true))) {
-      throw new IllegalStateException("선점한 출제 식별 기록 1건을 의도한 값으로 완성하지 못했습니다.");
+      throw new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
     }
   }
 
@@ -102,14 +104,14 @@ public class PublicationIdempotencyRepository {
     try {
       input = JSON.readValue(json, PublicationInput.class);
     } catch (JsonProcessingException exception) {
-      throw new UnreadableRecordException();
+      throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
     }
     Long gameId = row.getObject("game_id", Long.class);
     OffsetDateTime expiry = row.getObject("record_expires_at", OffsetDateTime.class);
     if (input == null
         || (gameId == null) != (expiry == null)
         || (expiry != null && !row.getBoolean("finite_expiry"))) {
-      throw new UnreadableRecordException();
+      throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
     }
     return new PublicationIdempotencyRecord(
         row.getLong("user_id"),
@@ -123,7 +125,8 @@ public class PublicationIdempotencyRepository {
     try {
       return JSON.writeValueAsString(Objects.requireNonNull(input));
     } catch (JsonProcessingException exception) {
-      throw new IllegalArgumentException("출제 의미 입력을 저장할 수 없습니다.", exception);
+      throw new DomainException(
+          PublicationErrorCode.PUBLICATION_INPUT_SERIALIZATION_FAILED, exception);
     }
   }
 
@@ -135,12 +138,5 @@ public class PublicationIdempotencyRepository {
     private final String requestKey;
     private final PublicationInput input;
     private final String xid;
-  }
-
-  public static final class UnreadableRecordException extends IllegalStateException {
-
-    private UnreadableRecordException() {
-      super("저장된 출제 식별 기록을 복원할 수 없습니다.");
-    }
   }
 }

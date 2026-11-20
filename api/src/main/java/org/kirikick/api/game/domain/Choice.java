@@ -12,6 +12,8 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.kirikick.api.common.exception.DomainException;
+import org.kirikick.api.game.domain.exception.GameErrorCode;
 import org.kirikick.api.question.domain.QuestionPresetChoice;
 
 @Getter
@@ -40,7 +42,7 @@ public class Choice {
         || position < 0
         || position >= 4
         || !questionId.equals(source.getQuestionPreset().getId())) {
-      throw new IllegalArgumentException("선택지는 같은 질문의 원본과 0~3의 위치가 필요합니다.");
+      throw new DomainException(GameErrorCode.INVALID_CHOICE);
     }
     Choice choice = new Choice();
     choice.game = game;
