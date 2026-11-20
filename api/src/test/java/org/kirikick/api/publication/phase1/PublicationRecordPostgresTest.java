@@ -51,18 +51,15 @@ class PublicationRecordPostgresTest {
   void storesUtf8KeysAsLiteralPrimaryKeyValues() throws SQLException {
     inSchema((context, jdbc) -> {
       long userId = user(jdbc);
-      String key = "한글🔑";
-
-      jdbc.sql(
-              """
-              insert into publication_idempotency (user_id, request_key, normalized_input)
-              values (:userId, :key, cast(:input as jsonb))
-              """)
-          .param("userId", userId)
-          .param("key", key)
-          .param("input", inputJson())
-          .update();
-
+      String key = " 한글🔑" + "가".repeat(81) + " ";
+      inTransaction(
+          context,
+          ignored -> {
+            var records = repository(context);
+            assertThat(records.tryClaim(userId, key, input())).isPresent();
+            assertThat(records.findForUpdate(userId, key).orElseThrow().requestKey())
+                .isEqualTo(key);
+          });
       assertThat(
               jdbc.sql(
                       """
@@ -103,6 +100,7 @@ class PublicationRecordPostgresTest {
           .contains(
               "request_key:text:NO",
               "normalized_input:jsonb:NO",
+              "claim_id:uuid:NO",
               "game_id:bigint:YES",
               "record_expires_at:timestamp with time zone:YES");
       var constraints =
@@ -360,9 +358,10 @@ class PublicationRecordPostgresTest {
       jdbc.sql(
               """
               insert into publication_idempotency (user_id, request_key, normalized_input)
-              values (:userId, 'wrong-kind-type', '{"kind":1}'::jsonb)
+              values (:userId, 'wrong-kind-type', cast(:input as jsonb))
               """)
           .param("userId", userId)
+          .param("input", inputJson().replace("\"NK_CREATE\"", "0"))
           .update();
 
       assertThatThrownBy(() ->
@@ -668,6 +667,43 @@ class PublicationRecordPostgresTest {
     });
   }
 
+  @Test
+  @DisplayName("P1-05: 같은 트랜잭션의 savepoint 롤백 전 선점은 새 선점을 완료할 수 없다")
+  void rejectsAClaimRolledBackToSavepoint() throws SQLException {
+    inSchema((context, jdbc) -> {
+      long userId = user(jdbc);
+      long gameId = game(jdbc, userId);
+      var transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
+
+      assertThatThrownBy(() ->
+              transaction.executeWithoutResult(status -> {
+                jdbc.sql("savepoint before_claim").update();
+                var stale =
+                    repository(context).tryClaim(userId, "savepoint-stale", input()).orElseThrow();
+                jdbc.sql("rollback to savepoint before_claim").update();
+                repository(context).tryClaim(userId, "savepoint-stale", input()).orElseThrow();
+
+                repository(context)
+                    .completeClaim(stale, gameId, Instant.parse("2026-11-21T00:30:00Z"));
+              }))
+          .isInstanceOfSatisfying(
+              DomainException.class,
+              e ->
+                  assertThat(e.getErrorCode())
+                      .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
+      assertThat(
+              jdbc.sql(
+                      """
+                      select count(*) from publication_idempotency
+                      where user_id = :userId and request_key = 'savepoint-stale'
+                      """)
+                  .param("userId", userId)
+                  .query(Long.class)
+                  .single())
+          .isZero();
+    });
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"duration-overflow", "instant-overflow", "pg-range", "missing-expiry"})
   @DisplayName("G2: 만료 계산·저장 실패 시 합성 업무와 선점을 모두 롤백한다")
@@ -729,6 +765,13 @@ class PublicationRecordPostgresTest {
                             .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
           }
         }
+        case "missing-expiry" ->
+            assertThat(failure)
+                .isInstanceOfSatisfying(
+                    DomainException.class,
+                    e ->
+                        assertThat(e.getErrorCode())
+                            .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
         default -> assertThat(failure).isInstanceOf(RuntimeException.class);
       }
       assertThat(

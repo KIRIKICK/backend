@@ -163,8 +163,9 @@ final class PublicationPhase1Postgres implements AutoCloseable {
       throws SQLException {
     String schema = newSchema();
     try (var pool = openSchema(schema)) {
+      Throwable testFailure = null;
       try {
-        assertThat(flyway(pool, schema, "4").migrate().migrationsExecuted).isEqualTo(4);
+        assertThat(flyway(pool, schema, "5").migrate().migrationsExecuted).isEqualTo(5);
         jpa(pool)
             .run(context -> {
               assertThat(context).hasNotFailed();
@@ -173,8 +174,19 @@ final class PublicationPhase1Postgres implements AutoCloseable {
                   SpringBootVersion.getVersion(), Version.getVersionString());
               test.accept(context, pool);
             });
+      } catch (RuntimeException | Error failure) {
+        testFailure = failure;
+        throw failure;
       } finally {
-        assertConnectionsReturned(pool, trial);
+        try {
+          assertConnectionsReturned(pool, trial);
+        } catch (RuntimeException | Error cleanupFailure) {
+          if (testFailure != null) {
+            testFailure.addSuppressed(cleanupFailure);
+          } else {
+            throw cleanupFailure;
+          }
+        }
       }
     }
   }

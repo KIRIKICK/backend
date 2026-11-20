@@ -34,9 +34,10 @@ class PublicationSchemaMigrationTest {
     try (var freshPool = POSTGRES.openSchema(fresh);
         var upgradePool = POSTGRES.openSchema(upgrade)) {
       try {
-        var freshFlyway = PublicationPhase1Postgres.flyway(freshPool, fresh, "4");
+        var freshFlyway = PublicationPhase1Postgres.flyway(freshPool, fresh, "5");
         var v2 = PublicationPhase1Postgres.flyway(upgradePool, upgrade, "2");
-        var upgradedFlyway = PublicationPhase1Postgres.flyway(upgradePool, upgrade, "4");
+        var v4 = PublicationPhase1Postgres.flyway(upgradePool, upgrade, "4");
+        var upgradedFlyway = PublicationPhase1Postgres.flyway(upgradePool, upgrade, "5");
         var freshJdbc = JdbcClient.create(freshPool);
         var upgradeJdbc = JdbcClient.create(upgradePool);
         assertThat(v2.migrate().migrationsExecuted).isEqualTo(2);
@@ -51,15 +52,35 @@ class PublicationSchemaMigrationTest {
                     """)
                 .query(Long.class)
                 .single();
-        assertThat(freshFlyway.migrate().migrationsExecuted).isEqualTo(4);
-        assertThat(upgradedFlyway.migrate().migrationsExecuted).isEqualTo(2);
+        assertThat(freshFlyway.migrate().migrationsExecuted).isEqualTo(5);
+        assertThat(v4.migrate().migrationsExecuted).isEqualTo(2);
+        upgradeJdbc
+            .sql(
+                """
+                insert into publication_idempotency (user_id, request_key, normalized_input)
+                values (?, 'legacy-key', '{}'::jsonb)
+                """)
+            .param(legacyUser)
+            .update();
+        assertThat(upgradedFlyway.migrate().migrationsExecuted).isOne();
+        assertThat(
+                upgradeJdbc
+                    .sql(
+                        """
+                        select claim_id is not null from publication_idempotency
+                        where user_id = ? and request_key = 'legacy-key'
+                        """)
+                    .param(legacyUser)
+                    .query(Boolean.class)
+                    .single())
+            .isTrue();
         freshFlyway.validate();
         upgradedFlyway.validate();
         var freshHistory = history(freshJdbc);
         var upgradedHistory = history(upgradeJdbc);
         assertThat(freshHistory)
             .extracting(row -> row.get("version"))
-            .containsExactly("1", "2", "3", "4");
+            .containsExactly("1", "2", "3", "4", "5");
         assertThat(upgradedHistory).isEqualTo(freshHistory);
         assertThat(upgradedHistory.subList(0, 2)).isEqualTo(before);
         for (var jdbc : List.of(freshJdbc, upgradeJdbc)) {

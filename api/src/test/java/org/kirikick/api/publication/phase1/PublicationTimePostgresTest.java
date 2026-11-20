@@ -137,7 +137,8 @@ class PublicationTimePostgresTest {
                   records.tryClaim(user, "c1", input).orElseThrow(), game, expires));
           var persisted = tx.execute(status -> records.findForUpdate(user, "c1").orElseThrow());
           assertThat(persisted.recordExpiresAt()).isEqualTo(expires);
-          var state = context.getBean(RoomRepository.class).findCurrentState(room).orElseThrow();
+          var rooms = context.getBean(RoomRepository.class);
+          var state = rooms.findCurrentState(room).orElseThrow();
           assertThat(state.getOpenedAt()).isEqualTo(opened);
           assertThat(state.getClosesAt()).isEqualTo(closed);
           for (int micros : List.of(-1, 0, 1)) {
@@ -146,6 +147,8 @@ class PublicationTimePostgresTest {
             boolean expected = micros >= 0;
             assertThat(!roomProbe.isBefore(state.getClosesAt())).isEqualTo(expected);
             assertThat(!recordProbe.isBefore(persisted.recordExpiresAt())).isEqualTo(expected);
+            assertThat(rooms.findUnsettledCandidateIds(roomProbe).contains(room))
+                .isEqualTo(expected);
             var boundaries =
                 jdbc.sql(
                         """

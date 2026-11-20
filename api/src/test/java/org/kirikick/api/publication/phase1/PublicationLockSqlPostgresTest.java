@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,6 +36,7 @@ import org.springframework.boot.test.context.assertj.AssertableApplicationContex
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Timeout(50)
@@ -227,62 +229,67 @@ class PublicationLockSqlPostgresTest {
           var clock = context.getBean(DbTimeSource.class);
           var tx = transactions(context);
           long user = newUser(jdbc);
+          var fixture = new CompletableFuture<RoomId>();
           var result = new CompletableFuture<RoomRead>();
           try (var trial = new Trial(label, pool)) {
-            var fixture = newRoom(jdbc, user, crossesDeadline ? 4 : 300);
             tx.executeWithoutResult(status -> {
               trial.holder = actor(jdbc);
-              assertThat(rooms.lockById(fixture.id())).contains(fixture.id());
               trial.launch(() ->
                   tx.executeWithoutResult(waiterStatus -> {
                     trial.signalWaiter(actor(jdbc));
-                    var oldRoom = rooms.findById(fixture.id()).orElseThrow();
+                    RoomId room = get(fixture);
+                    var oldRoom = rooms.findById(room.id()).orElseThrow();
                     Instant before = clock.readCurrentTime();
                     assertThat(oldRoom.getStatus()).isEqualTo(Room.Status.OPEN);
-                    assertThat(before).isBefore(fixture.closesAt());
                     assertThat(users.lockById(user)).contains(user);
-                    assertThat(rooms.lockById(fixture.id())).contains(fixture.id());
+                    assertThat(rooms.lockById(room.id())).contains(room.id());
                     Instant after = clock.readCurrentTime();
-                    var state = rooms.findCurrentState(fixture.id()).orElseThrow();
+                    var state = rooms.findCurrentState(room.id()).orElseThrow();
                     assertThat(state.getOpenedAt())
-                        .isEqualTo(fixture.closesAt().minus(Duration.ofHours(24)));
-                    assertThat(state.getClosesAt()).isEqualTo(fixture.closesAt());
+                        .isEqualTo(room.closesAt().minus(Duration.ofHours(24)));
+                    assertThat(state.getClosesAt()).isEqualTo(room.closesAt());
                     assertThat(state.getResultState()).isEqualTo(Room.ResultState.NOT_READY);
                     result.complete(
                         new RoomRead(before, after, oldRoom.getStatus(), state.getStatus()));
                     waiterStatus.setRollbackOnly();
                   }));
+              get(trial.waiter);
+              RoomId room =
+                  requiresNewTransactions(context)
+                      .execute(ignored -> newRoom(jdbc, user, crossesDeadline ? 4 : 300));
+              assertThat(rooms.lockById(room.id())).contains(room.id());
+              fixture.complete(room);
               Wait before = trial.awaitWait(observation -> true);
               assertRoomWait(before);
               trial.requireHolderSql("from rooms", "for update");
-              assertThat(before.dbTime()).isBefore(fixture.closesAt());
+              assertThat(before.waitStartedAt()).isBefore(room.closesAt());
               if (crossesDeadline) {
                 var after =
-                    trial.awaitWait(
-                        observation -> !observation.dbTime().isBefore(fixture.closesAt()));
+                    trial.awaitWait(observation -> !observation.dbTime().isBefore(room.closesAt()));
                 assertRoomWait(after);
-                assertThat(after.dbTime()).isAfterOrEqualTo(fixture.closesAt());
+                assertThat(after.dbTime()).isAfterOrEqualTo(room.closesAt());
               } else {
                 assertThat(
                         jdbc.sql("update rooms set status='CLOSED' where id = ?")
-                            .param(fixture.id())
+                            .param(room.id())
                             .update())
                     .isOne();
               }
             });
             trial.finished(true, false);
+            RoomId room = get(fixture);
             RoomRead read = get(result);
-            assertThat(read.before()).isBefore(fixture.closesAt());
+            assertThat(read.before()).isBefore(room.closesAt());
             assertThat(read.oldStatus()).isEqualTo(Room.Status.OPEN);
             if (crossesDeadline) {
-              assertThat(read.after()).isAfterOrEqualTo(fixture.closesAt());
+              assertThat(read.after()).isAfterOrEqualTo(room.closesAt());
               assertThat(read.currentStatus()).isEqualTo(Room.Status.OPEN);
             } else {
-              assertThat(read.after()).isBefore(fixture.closesAt());
+              assertThat(read.after()).isBefore(room.closesAt());
               assertThat(read.currentStatus()).isEqualTo(Room.Status.CLOSED);
             }
             System.out.printf(
-                "%s room=%d closes=%s read=%s%n", label, fixture.id(), fixture.closesAt(), read);
+                "%s room=%d closes=%s read=%s%n", label, room.id(), room.closesAt(), read);
           }
         });
   }
@@ -294,6 +301,12 @@ class PublicationLockSqlPostgresTest {
   private static TransactionTemplate transactions(AssertableApplicationContext context) {
     var tx = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
     tx.setTimeout(19);
+    return tx;
+  }
+
+  private static TransactionTemplate requiresNewTransactions(AssertableApplicationContext context) {
+    var tx = transactions(context);
+    tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     return tx;
   }
 
@@ -357,16 +370,33 @@ class PublicationLockSqlPostgresTest {
 
     Trial(String label, HikariDataSource pool) {
       this.label = label;
+      Connection connection = null;
       try {
-        observationConnection = pool.getConnection();
-        assertThat(observationConnection.getAutoCommit()).isTrue();
+        connection = pool.getConnection();
+        assertThat(connection.getAutoCommit()).isTrue();
+        JdbcClient candidate = JdbcClient.create(new SingleConnectionDataSource(connection, true));
+        int observerPid = candidate.sql("select pg_backend_pid()").query(Integer.class).single();
+        observationConnection = connection;
+        observer = candidate;
+        System.out.printf("%s observer pid=%d%n", label, observerPid);
       } catch (SQLException e) {
+        closeAfterInitializationFailure(connection, e);
         throw new IllegalStateException("Could not open independent observer connection", e);
+      } catch (RuntimeException | Error e) {
+        closeAfterInitializationFailure(connection, e);
+        throw e;
       }
-      observer = JdbcClient.create(new SingleConnectionDataSource(observationConnection, true));
-      System.out.printf(
-          "%s observer pid=%d%n",
-          label, observer.sql("select pg_backend_pid()").query(Integer.class).single());
+    }
+
+    private static void closeAfterInitializationFailure(Connection connection, Throwable failure) {
+      if (connection == null) {
+        return;
+      }
+      try {
+        connection.close();
+      } catch (SQLException | RuntimeException | Error closeFailure) {
+        failure.addSuppressed(closeFailure);
+      }
     }
 
     void launch(Runnable task) {
@@ -391,6 +421,8 @@ class PublicationLockSqlPostgresTest {
                     select clock_timestamp(), w.backend_xid::text, w.wait_event_type, w.wait_event,
                            array_to_string(pg_blocking_pids(w.pid), ','), w.query,
                            h.backend_xid::text, h.query,
+                           (select min(l.waitstart) from pg_locks l
+                            where l.pid = w.pid and not l.granted),
                            (select string_agg(concat_ws(':', l.pid, l.locktype, l.mode, l.granted,
                                       l.transactionid, l.relation::regclass, l.page, l.tuple), ',')
                             from pg_locks l where l.pid in (w.pid, h.pid))
@@ -408,10 +440,12 @@ class PublicationLockSqlPostgresTest {
                         r.getString(6),
                         r.getString(7),
                         r.getString(8),
-                        r.getString(9)))
+                        waitStartedAt(r),
+                        r.getString(10)))
                 .single();
         if ("Lock".equals(last.waitType())
             && Integer.toString(holder.pid()).equals(last.blocker())
+            && last.waitStartedAt() != null
             && accepts.test(last)) {
           System.out.printf("%s observed %s%n", label, last);
           assertThat(last.waiterXid()).isEqualTo(blocked.xid());
@@ -430,6 +464,11 @@ class PublicationLockSqlPostgresTest {
         LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
       }
       throw new AssertionError(label + " missing required wait evidence; last=" + last);
+    }
+
+    private static Instant waitStartedAt(ResultSet row) throws SQLException {
+      OffsetDateTime value = row.getObject(9, OffsetDateTime.class);
+      return value == null ? null : value.toInstant();
     }
 
     void requireHolderSql(String table, String mode) {
@@ -482,28 +521,27 @@ class PublicationLockSqlPostgresTest {
 
     @Override
     public void close() {
-      worker.shutdownNow();
-      try {
-        assertThat(worker.awaitTermination(18, TimeUnit.SECONDS)).as("waiter terminated").isTrue();
+      try (Connection ignored = observationConnection) {
+        worker.shutdownNow();
+        try {
+          assertThat(worker.awaitTermination(18, TimeUnit.SECONDS))
+              .as("waiter terminated")
+              .isTrue();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new IllegalStateException("Could not verify waiter termination", e);
+        }
         System.out.printf("%s cleanup waiter terminated%n", label);
         Actor other = waiter.getNow(null);
         if (holder != null && other != null) {
           POSTGRES.logActorSql(holder.pid(), other.pid());
         }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
+      } catch (SQLException e) {
         PublicationPhase1Postgres.recordCleanupFailure(e);
-        throw new IllegalStateException("Could not verify waiter termination", e);
-      } catch (AssertionError e) {
+        throw new IllegalStateException("Could not return observer connection", e);
+      } catch (RuntimeException | AssertionError e) {
         PublicationPhase1Postgres.recordCleanupFailure(e);
         throw e;
-      } finally {
-        try {
-          observationConnection.close();
-        } catch (SQLException e) {
-          PublicationPhase1Postgres.recordCleanupFailure(e);
-          throw new IllegalStateException("Could not return observer connection", e);
-        }
       }
     }
   }
@@ -519,6 +557,7 @@ class PublicationLockSqlPostgresTest {
       String waiterSql,
       String holderXid,
       String holderSql,
+      Instant waitStartedAt,
       String locks) {}
 
   private record RoomId(long id, Instant closesAt) {}

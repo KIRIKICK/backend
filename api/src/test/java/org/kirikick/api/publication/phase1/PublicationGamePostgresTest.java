@@ -331,12 +331,19 @@ class PublicationGamePostgresTest {
           long q3 = insertQuestion(jdbc, "three");
           long first = insertGame(jdbc, fixture.roomId(), q2, "two", tie);
           long second = insertGame(jdbc, fixture.roomId(), q3, "three", tie);
+          long earlier =
+              insertGame(
+                  jdbc,
+                  fixture.roomId(),
+                  insertQuestion(jdbc, "earlier"),
+                  "earlier",
+                  tie.minusSeconds(1));
           assertThat(
                   context
                       .getBean(GameRepository.class)
                       .findAllByRoom_IdOrderByCreatedAtAscIdAsc(fixture.roomId()))
               .extracting(Game::getId)
-              .containsExactly(fixture.gameId(), first, second);
+              .containsExactly(earlier, fixture.gameId(), first, second);
           var duplicateQuestion =
               sqlFailure(() -> insertGame(jdbc, fixture.roomId(), q2, "duplicate", tie));
           assertThat(duplicateQuestion.getSQLState()).isEqualTo("23505");

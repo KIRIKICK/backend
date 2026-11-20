@@ -80,7 +80,8 @@ class ProductArtifactIsolationTest {
                 "V1__create_users_and_oauth_identities.sql",
                 "V2__create_signup_applications.sql",
                 "V3__create_question_room_game_core.sql",
-                "V4__create_publication_idempotency.sql");
+                "V4__create_publication_idempotency.sql",
+                "V5__add_publication_claim_identity.sql");
       }
     }
   }
