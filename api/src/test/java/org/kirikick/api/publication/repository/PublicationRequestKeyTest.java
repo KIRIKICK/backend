@@ -12,6 +12,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.kirikick.api.common.exception.DomainException;
+import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationInput.Kind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
@@ -23,7 +24,7 @@ class PublicationRequestKeyTest {
   @DisplayName("선점과 조회는 잘못된 요청 키를 SQL 실행 전에 거절한다")
   void rejectsInvalidKeysBeforeSql(String description, String key) {
     JdbcClient jdbc = mock(JdbcClient.class);
-    var records = new PublicationIdempotencyRepository(jdbc);
+    var records = new PublicationIdempotencyRepository(jdbc, new DbTimeSource(jdbc));
     var input = new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L), 1L);
 
     assertThatThrownBy(() -> records.tryClaim(1L, key, input))
