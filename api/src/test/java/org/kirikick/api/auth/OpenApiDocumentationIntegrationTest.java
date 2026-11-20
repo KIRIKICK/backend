@@ -99,11 +99,12 @@ class OpenApiDocumentationIntegrationTest {
   }
 
   @Test
-  @DisplayName("API 문서에 내 프로필 응답과 Bearer 인증을 표시한다")
+  @DisplayName("API 문서에 회원 프로필 태그와 내 프로필 응답 및 Bearer 인증을 표시한다")
   void documentsMyProfileResponseAndBearerAuthentication() throws Exception {
     JsonNode operation = document().at("/paths/~1users~1me~1profile/get");
 
     assertThat(operation.path("summary").asText()).isEqualTo("내 프로필 조회");
+    assertThat(operation.path("tags")).extracting(JsonNode::asText).containsExactly("회원 프로필");
     JsonNode errorSchema = document().at("/components/schemas/ErrorResponse");
     assertThat(errorSchema.at("/properties/code/description").asText()).isEqualTo("오류 코드");
     assertThat(errorSchema.at("/properties/message/description").asText()).isEqualTo("오류 사유");
