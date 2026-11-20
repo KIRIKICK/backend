@@ -37,6 +37,7 @@ import org.springframework.test.context.DynamicPropertySource;
     })
 class PostgresInstantTimeZoneTest {
 
+  private static final String SCHEMA = "instant_time_zone_test";
   private static final Instant ISSUED_AT = Instant.parse("2030-01-02T00:15:30.123456Z");
   private static final Instant EXPECTED_EXPIRES_AT = Instant.parse("2030-01-02T00:20:30.123456Z");
 
@@ -46,6 +47,8 @@ class PostgresInstantTimeZoneTest {
   @DynamicPropertySource
   static void migrationSchema(DynamicPropertyRegistry registry) {
     registry.add("spring.flyway.enabled", () -> true);
+    registry.add("spring.flyway.default-schema", () -> SCHEMA);
+    registry.add("spring.datasource.hikari.schema", () -> SCHEMA);
     registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
   }
 

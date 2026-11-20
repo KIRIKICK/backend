@@ -35,6 +35,10 @@ subprojects {
 			testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 		}
 
+		tasks.withType(Test).configureEach {
+			systemProperty 'user.timezone', 'Asia/Seoul'
+		}
+
 		tasks.named('test') {
 			useJUnitPlatform()
 			systemProperty 'architecture.classes.dirs', sourceSets.main.output.classesDirs.asPath
