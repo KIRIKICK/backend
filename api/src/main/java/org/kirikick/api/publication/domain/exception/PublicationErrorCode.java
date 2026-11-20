@@ -7,6 +7,7 @@ import org.kirikick.api.common.exception.ErrorCode;
 @Getter
 @RequiredArgsConstructor
 public enum PublicationErrorCode implements ErrorCode {
+  INVALID_PUBLICATION_REQUEST_KEY("유효하지 않은 출제 요청 키입니다."),
   INVALID_PUBLICATION_TARGET("출제 종류에 맞는 대상과 질문이 필요합니다."),
   INVALID_PUBLICATION_CHOICES("서로 다른 선택지 4개와 그중 정답이 필요합니다."),
   PUBLICATION_CLAIM_COMPLETION_FAILED("선점한 출제 식별 기록 1건을 의도한 값으로 완성하지 못했습니다."),
