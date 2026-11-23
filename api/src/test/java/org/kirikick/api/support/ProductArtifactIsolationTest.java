@@ -44,6 +44,8 @@ class ProductArtifactIsolationTest {
                 "publication/repository/PublicationIdempotencyRepository$Claim.class",
                 "publication/repository/PublicationIdempotencyRepository$Replay.class",
                 "publication/repository/PublicationIdempotencyRepository$Reservation.class",
+                "publication/service/OpenRoomService.class",
+                "publication/service/OpenRoomService$Result.class",
                 "question/domain/QQuestionPreset.class",
                 "question/domain/QQuestionPresetChoice.class",
                 "question/domain/QuestionPreset.class",

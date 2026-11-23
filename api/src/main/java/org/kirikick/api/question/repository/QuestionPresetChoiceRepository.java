@@ -9,4 +9,6 @@ public interface QuestionPresetChoiceRepository extends Repository<QuestionPrese
 
   List<QuestionPresetChoice> findAllByQuestionPreset_IdAndIdInOrderByIdAsc(
       Long questionPresetId, Collection<Long> ids);
+
+  long countByIdIn(Collection<Long> ids);
 }

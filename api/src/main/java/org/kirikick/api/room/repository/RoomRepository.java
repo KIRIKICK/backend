@@ -12,6 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface RoomRepository extends JpaRepository<Room, Long> {
 
+  @Query(
+      value =
+          "select id from rooms where host_user_id = :hostUserId and status = 'OPEN' order by id limit 1",
+      nativeQuery = true)
+  Optional<Long> findStoredOpenRoomIdByHostUserId(@Param("hostUserId") Long hostUserId);
+
   @Transactional(propagation = Propagation.MANDATORY)
   @Query(value = "select id from rooms where id = :id for update", nativeQuery = true)
   Optional<Long> lockById(@Param("id") Long id);
