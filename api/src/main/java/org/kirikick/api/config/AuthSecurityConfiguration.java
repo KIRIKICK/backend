@@ -1,9 +1,12 @@
 package org.kirikick.api.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.Objects;
 import org.kirikick.api.auth.controller.AuthHttpSupport;
 import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.auth.infra.AuthFrontendPolicy;
@@ -33,13 +36,17 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.NullSecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 import org.springframework.web.cors.CorsConfiguration;
@@ -120,6 +127,30 @@ public class AuthSecurityConfiguration {
     };
   }
 
+  private static ObjectPostProcessor<CsrfFilter> publicationCsrfPostProcessor(
+      BearerTokenResolver bearerTokens) {
+    return new ObjectPostProcessor<>() {
+      @Override
+      public <O extends CsrfFilter> O postProcess(O filter) {
+        // Resource-server defaults exempt bearer requests; only publication also requires CSRF.
+        filter.setRequireCsrfProtectionMatcher(request ->
+            CsrfFilter.DEFAULT_CSRF_MATCHER.matches(request)
+                && ("/games".equals(request.getServletPath())
+                    || !hasBearerToken(request, bearerTokens)));
+        return filter;
+      }
+    };
+  }
+
+  private static boolean hasBearerToken(
+      HttpServletRequest request, BearerTokenResolver bearerTokens) {
+    try {
+      return bearerTokens.resolve(request) != null;
+    } catch (OAuth2AuthenticationException ignored) {
+      return false;
+    }
+  }
+
   @Bean
   SecurityFilterChain securityFilterChain(
       HttpSecurity http,
@@ -138,6 +169,8 @@ public class AuthSecurityConfiguration {
     boolean documentationEnabled =
         !environment.acceptsProfiles(Profiles.of("prod"))
             && environment.acceptsProfiles(Profiles.of("local", "dev"));
+    boolean publicationEnabled = environment.containsProperty("publication.grace");
+    BearerTokenResolver bearerTokens = new DefaultBearerTokenResolver();
     NullSecurityContextRepository noSecurityContext = new NullSecurityContextRepository();
     CookieCsrfTokenRepository csrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
     csrf.setCookieHttpOnly(true);
@@ -165,15 +198,32 @@ public class AuthSecurityConfiguration {
     cors.addAllowedMethod("GET");
     cors.addAllowedMethod("POST");
     UrlBasedCorsConfigurationSource corsSource = new UrlBasedCorsConfigurationSource();
+    if (publicationEnabled) {
+      CorsConfiguration publicationCors =
+          new CorsConfiguration(cors) {
+            @Override
+            public String checkOrigin(String requestOrigin) {
+              return cors.checkOrigin(requestOrigin);
+            }
+          };
+      publicationCors.setAllowedHeaders(
+          new ArrayList<>(Objects.requireNonNull(cors.getAllowedHeaders())));
+      publicationCors.addAllowedHeader("Idempotency-Key");
+      corsSource.registerCorsConfiguration("/games", publicationCors);
+    }
     corsSource.registerCorsConfiguration("/**", cors);
 
     http.securityContext(context -> context.securityContextRepository(noSecurityContext))
         .requestCache(cache -> cache.requestCache(new NullRequestCache()))
         .cors(corsConfig -> corsConfig.configurationSource(corsSource))
-        .csrf(csrfConfig ->
-            csrfConfig
-                .csrfTokenRepository(csrf)
-                .csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler()))
+        .csrf(csrfConfig -> {
+          csrfConfig
+              .csrfTokenRepository(csrf)
+              .csrfTokenRequestHandler(new XorCsrfTokenRequestAttributeHandler());
+          if (publicationEnabled) {
+            csrfConfig.withObjectPostProcessor(publicationCsrfPostProcessor(bearerTokens));
+          }
+        })
         .authorizeHttpRequests(authorize -> {
           var documentation =
               authorize.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html");
@@ -196,6 +246,7 @@ public class AuthSecurityConfiguration {
         })
         .oauth2ResourceServer(resource ->
             resource
+                .bearerTokenResolver(bearerTokens)
                 .authenticationEntryPoint((request, response, error) ->
                     writeError(
                         response,

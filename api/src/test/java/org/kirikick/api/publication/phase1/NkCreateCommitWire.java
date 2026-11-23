@@ -9,24 +9,53 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Test-only PostgreSQL relay; the JDBC observer never reads the withheld server outcome. */
+/** Test-only plaintext PostgreSQL relay; observations never enter product classification. */
 final class NkCreateCommitWire implements AutoCloseable {
   enum Loss {
     NONE,
     COMMIT_REPLY,
-    FLUSH_REPLY
+    FLUSH_REPLY,
+    STATEMENT_REPLY
   }
 
+  record WireEvent(
+      long nanoTime,
+      int pid,
+      long exchange,
+      String event,
+      String sql,
+      String backendType,
+      String detail) {}
+
+  private static final int ALL_CONNECTIONS = 0;
+  private static final long NO_EXCHANGE = -1L;
   private final ServerSocket listener;
   private final ExecutorService tasks = Executors.newVirtualThreadPerTaskExecutor();
+  private final Set<Socket> sockets = ConcurrentHashMap.newKeySet();
   private final AtomicReference<Throwable> fault = new AtomicReference<>();
-  private final Loss loss;
+  private final List<WireEvent> events = Collections.synchronizedList(new ArrayList<>());
+  private final AtomicLong connections = new AtomicLong();
+  private final AtomicBoolean closed = new AtomicBoolean();
+  private volatile Loss loss;
   private volatile boolean armed;
+  private volatile int armedPid = ALL_CONNECTIONS;
   private volatile boolean dispatched;
   private volatile char withheld;
   private volatile boolean executed;
@@ -34,18 +63,7 @@ final class NkCreateCommitWire implements AutoCloseable {
   NkCreateCommitWire(String host, int port, Loss loss) throws IOException {
     this.loss = loss;
     listener = new ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"));
-    tasks.execute(() -> {
-      while (!listener.isClosed()) {
-        try {
-          var client = listener.accept();
-          tasks.execute(() -> bridge(client, host, port));
-        } catch (IOException e) {
-          if (!listener.isClosed()) {
-            fault.compareAndSet(null, e);
-          }
-        }
-      }
-    });
+    tasks.execute(() -> accept(host, port));
   }
 
   int port() {
@@ -53,7 +71,34 @@ final class NkCreateCommitWire implements AutoCloseable {
   }
 
   void arm() {
-    armed = true;
+    arm(ALL_CONNECTIONS, loss);
+  }
+
+  void arm(Loss requestedLoss) {
+    arm(ALL_CONNECTIONS, requestedLoss);
+  }
+
+  /**
+   * Arms one physical PostgreSQL backend PID; zero preserves legacy all-connection test behavior.
+   */
+  void arm(int pid, Loss requestedLoss) {
+    if (pid < ALL_CONNECTIONS)
+      throw new IllegalArgumentException("PostgreSQL PID must be non-negative");
+    loss = requestedLoss;
+    armedPid = pid;
+    fault.set(null);
+    dispatched = false;
+    withheld = 0;
+    executed = false;
+    synchronized (events) {
+      events.clear();
+    }
+    armed = true; // Loss.NONE is an intentional control that still records the selected COMMIT.
+  }
+
+  void disarm() {
+    armed = false;
+    armedPid = ALL_CONNECTIONS;
   }
 
   boolean commitDispatched() {
@@ -68,35 +113,56 @@ final class NkCreateCommitWire implements AutoCloseable {
     return executed;
   }
 
+  List<WireEvent> events() {
+    synchronized (events) {
+      return List.copyOf(events);
+    }
+  }
+
   void requireHealthy() {
-    if (fault.get() != null) {
+    Throwable problem = fault.get();
+    if (problem != null)
       throw new AssertionError(
-          "Test transport could not observe the actual driver protocol", fault.get());
+          "Test transport could not observe the actual driver protocol", problem);
+  }
+
+  private void accept(String host, int port) {
+    while (!listener.isClosed()) {
+      try {
+        Socket client = listener.accept();
+        sockets.add(client);
+        tasks.execute(() -> bridge(client, host, port));
+      } catch (IOException exception) {
+        if (!listener.isClosed()) fault.compareAndSet(null, exception);
+      }
     }
   }
 
   private void bridge(Socket client, String host, int port) {
+    Socket upstream = new Socket();
+    sockets.add(upstream);
+    Session session = null;
     try (client;
-        var upstream = new Socket()) {
+        upstream) {
       upstream.connect(new InetSocketAddress(host, port), 5000);
       client.setSoTimeout(12000);
       upstream.setSoTimeout(12000);
-      var fromClient = new DataInputStream(client.getInputStream());
-      var toClient = new DataOutputStream(client.getOutputStream());
-      var fromPg = new DataInputStream(upstream.getInputStream());
-      var toPg = new DataOutputStream(upstream.getOutputStream());
-      try {
-        startup(fromClient, toClient, fromPg, toPg);
-        var exchange = new Exchange();
-        tasks.execute(() -> replies(client, upstream, fromPg, toClient, exchange));
-        requests(fromClient, toPg, exchange);
-      } catch (IOException | RuntimeException e) {
-        if (withheld == 0 && !client.isClosed()) {
-          fault.compareAndSet(null, e);
-        }
+      DataInputStream fromClient = new DataInputStream(client.getInputStream());
+      DataOutputStream toClient = new DataOutputStream(client.getOutputStream());
+      DataInputStream fromPg = new DataInputStream(upstream.getInputStream());
+      DataOutputStream toPg = new DataOutputStream(upstream.getOutputStream());
+      startup(fromClient, toClient, fromPg, toPg);
+      Session relaySession = new Session(connections.incrementAndGet());
+      session = relaySession;
+      tasks.execute(() -> replies(client, upstream, fromPg, toClient, relaySession));
+      requests(fromClient, toPg, relaySession);
+    } catch (IOException | RuntimeException exception) {
+      if (!closed.get() && (session == null || !session.expectedClose)) {
+        fault.compareAndSet(null, exception);
       }
-    } catch (IOException | RuntimeException e) {
-      fault.compareAndSet(null, e);
+    } finally {
+      sockets.remove(client);
+      sockets.remove(upstream);
     }
   }
 
@@ -104,144 +170,316 @@ final class NkCreateCommitWire implements AutoCloseable {
       DataInputStream client, DataOutputStream toClient, DataInputStream pg, DataOutputStream toPg)
       throws IOException {
     while (true) {
-      var bytes = body(client);
+      byte[] bytes = body(client);
       toPg.writeInt(bytes.length + 4);
       toPg.write(bytes);
       toPg.flush();
-      if (bytes.length != 4) {
-        return;
-      }
-      // Let the real driver negotiate; this fixture requires an unencrypted local PG connection.
+      if (bytes.length != 4) return;
       int response = pg.readUnsignedByte();
       toClient.writeByte(response);
       toClient.flush();
-      if (response != 'N') {
+      if (response != 'N')
         throw new IllegalStateException(
             "Fixture negotiated non-plaintext PostgreSQL; no wire proof");
-      }
     }
   }
 
-  private void requests(DataInputStream from, DataOutputStream to, Exchange exchange)
+  private void requests(DataInputStream from, DataOutputStream to, Session session)
       throws IOException {
     int type;
     while ((type = from.read()) != -1) {
-      var bytes = body(from);
-      if (armed && (type == 'P' || type == 'Q')) {
-        String query = query(type, bytes);
-        boolean commit = query.equalsIgnoreCase("COMMIT");
-        boolean flush =
-            loss == Loss.FLUSH_REPLY && query.toLowerCase(Locale.ROOT).startsWith("update rooms ");
-        if (commit || flush) {
-          if (type != 'P') {
-            throw new IllegalStateException(
-                "Expected default pgjdbc extended protocol for the target");
+      byte[] bytes = body(from);
+      switch (type) {
+        case 'P' ->
+            sendOperation(
+                to,
+                type,
+                bytes,
+                session.operation(OperationKind.PARSE, parse(session, bytes)),
+                session);
+        case 'B' ->
+            sendOperation(
+                to,
+                type,
+                bytes,
+                session.operation(OperationKind.BIND, bind(session, bytes)),
+                session);
+        case 'E' ->
+            sendOperation(
+                to,
+                type,
+                bytes,
+                session.operation(OperationKind.EXECUTE, execute(session, bytes)),
+                session);
+        case 'Q' -> {
+          Operation operation =
+              session.operation(OperationKind.SIMPLE, classify(cstring(bytes, 0)));
+          session.sync();
+          sendOperation(to, type, bytes, operation, session);
+        }
+        case 'S' -> {
+          session.sync();
+          frame(to, type, bytes);
+          if (shouldObserve(session)) {
+            event(session, null, "SYNC_FORWARDED", "OTHER", "S", "cycle");
           }
-          exchange.kind = commit ? Kind.COMMIT : Kind.FLUSH;
-          exchange.expectedFrames = commit ? "PBES" : "PBDES";
-          exchange.frames = 1;
         }
-      } else if (exchange.frames > 0 && exchange.expectedFrames == null) {
-        throw new IllegalStateException("JDBC target frame sequence was not initialized");
-      } else if (exchange.frames > 0 && exchange.frames < exchange.expectedFrames.length()) {
-        if (type != exchange.expectedFrames.charAt(exchange.frames)) {
-          throw new IllegalStateException(
-              "Unexpected frontend frame in JDBC target: " + (char) type);
-        }
-        exchange.frames++;
-      }
-      boolean commitSync =
-          type == 'S'
-              && exchange.kind == Kind.COMMIT
-              && exchange.expectedFrames != null
-              && exchange.frames == exchange.expectedFrames.length();
-      frame(to, type, bytes);
-      if (commitSync) {
-        dispatched = true;
+        default -> frame(to, type, bytes);
       }
       if (type == 'X') {
+        session.expectedClose = true;
         return;
       }
+    }
+    session.expectedClose = true;
+  }
+
+  private void sendOperation(
+      DataOutputStream to, int type, byte[] bytes, Operation operation, Session session)
+      throws IOException {
+    // The immutable FIFO entry exists before wire write, but FORWARDED is logged only after flush.
+    frame(to, type, bytes);
+    if (!shouldObserve(session)) {
+      operation.forwarded.countDown();
+      return;
+    }
+    event(
+        session,
+        operation,
+        "FRONTEND_FORWARDED",
+        operation.sql,
+        Character.toString((char) type),
+        "sent");
+    if (operation.sql.equals("COMMIT") && operation.kind.isExecutable()) {
+      dispatched = true;
+      event(
+          session,
+          operation,
+          "COMMIT_FORWARDED",
+          operation.sql,
+          Character.toString((char) type),
+          "sent");
+    }
+    operation.forwarded.countDown();
+  }
+
+  private String parse(Session session, byte[] bytes) {
+    Cursor cursor = new Cursor(bytes);
+    String statement = cursor.string();
+    String sql = classify(cursor.string());
+    synchronized (session) {
+      session.statements.put(statement, sql);
+    }
+    return sql;
+  }
+
+  private String bind(Session session, byte[] bytes) {
+    Cursor cursor = new Cursor(bytes);
+    String portal = cursor.string();
+    String statement = cursor.string();
+    synchronized (session) {
+      String sql = session.statements.get(statement);
+      if (sql == null) throw new IllegalStateException("Bind references an unparsed statement");
+      session.portals.put(portal, sql);
+      return sql;
+    }
+  }
+
+  private String execute(Session session, byte[] bytes) {
+    synchronized (session) {
+      String sql = session.portals.get(new Cursor(bytes).string());
+      if (sql == null) throw new IllegalStateException("Execute references an unbound portal");
+      return sql;
     }
   }
 
   private void replies(
-      Socket client,
-      Socket upstream,
-      DataInputStream from,
-      DataOutputStream to,
-      Exchange exchange) {
+      Socket client, Socket upstream, DataInputStream from, DataOutputStream to, Session session) {
     try {
       int type;
       while ((type = from.read()) != -1) {
-        var bytes = body(from);
-        Kind kind = exchange.kind;
-        if (kind != null) {
-          if (type == '1') {
-            exchange.parseComplete = true;
+        byte[] bytes = body(from);
+        if (type == 'K') {
+          synchronized (session) {
+            session.pid = intAt(bytes, 0);
           }
-          if (type == '2') {
-            exchange.bindComplete = true;
+          if (shouldObserve(session)) {
+            event(session, null, "BACKEND_KEY", "OTHER", "K", "pid-observed");
           }
-          if (type == 'C' || type == 'E') {
-            if (exchange.frames != exchange.expectedFrames.length()
-                || !exchange.parseComplete
-                || !exchange.bindComplete) {
-              throw new IllegalStateException(
-                  "Target did not reach PostgreSQL as a complete extended query");
-            }
-            executed = true;
-            if ((kind == Kind.COMMIT && loss == Loss.COMMIT_REPLY) || kind == Kind.FLUSH) {
-              withheld = (char) type;
-              client.close();
-              upstream.close();
-              return;
-            }
-            if (kind == Kind.COMMIT && type == 'C' && !commandTag(bytes).equals("COMMIT")) {
-              throw new IllegalStateException("Backend command tag is not COMMIT");
-            }
-            exchange.kind = null;
-            exchange.parseComplete = false;
-            exchange.bindComplete = false;
+        }
+        Operation operation = responseOperation(session, type);
+        if (operation != null) {
+          awaitForwarded(operation);
+          if (!shouldObserve(session)) {
             frame(to, type, bytes);
             continue;
+          }
+          boolean commitComplete = type == 'C' && "COMMIT".equals(commandTag(bytes));
+          if (operation.sql.equals("COMMIT") && type == 'C' && !commitComplete) {
+            throw new IllegalStateException(
+                "COMMIT execution received non-COMMIT command completion");
+          }
+          if (isTarget(session) && operation.sql.equals("COMMIT") && operation.kind.isExecutable())
+            executed = true;
+          event(
+              session,
+              operation,
+              switch (type) {
+                case 'C' -> "BACKEND_COMMAND_COMPLETE";
+                case 'E' -> "BACKEND_ERROR";
+                case '1' -> "BACKEND_PARSE_COMPLETE";
+                case '2' -> "BACKEND_BIND_COMPLETE";
+                default -> "BACKEND_REPLY";
+              },
+              operation.sql,
+              Character.toString((char) type),
+              type == 'C' ? commandTag(bytes) : type == 'E' ? errorSqlState(bytes) : "ack");
+          if (shouldWithhold(session, operation, type, commitComplete)) {
+            withheld = (char) type;
+            event(
+                session,
+                operation,
+                "BACKEND_REPLY_WITHHELD",
+                operation.sql,
+                Character.toString((char) type),
+                "target");
+            armed = false;
+            session.expectedClose = true;
+            client.close();
+            upstream.close();
+            return;
+          }
+          event(
+              session,
+              operation,
+              "BACKEND_REPLY_FORWARDED",
+              operation.sql,
+              Character.toString((char) type),
+              "target-or-control");
+        }
+        if (type == 'Z') {
+          session.readyForQuery();
+          if (shouldObserve(session)) {
+            event(session, null, "READY_FOR_QUERY", "OTHER", "Z", "cycle");
           }
         }
         frame(to, type, bytes);
       }
-    } catch (IOException | RuntimeException e) {
-      if (withheld == 0 && !client.isClosed() && !upstream.isClosed()) {
-        fault.compareAndSet(null, e);
-      }
+    } catch (IOException | RuntimeException exception) {
+      if (!closed.get() && !session.expectedClose) fault.compareAndSet(null, exception);
     }
   }
 
-  private static String query(int type, byte[] bytes) {
-    int start = type == 'P' ? end(bytes, 0) + 1 : 0;
-    return new String(bytes, start, end(bytes, start) - start, StandardCharsets.UTF_8);
+  private Operation responseOperation(Session session, int backendType) {
+    synchronized (session) {
+      Operation operation = session.operations.peekFirst();
+      if (operation == null) return null;
+      if (!operation.kind.accepts(backendType)) return null;
+      if (operation.kind != OperationKind.SIMPLE) session.operations.removeFirst();
+      if (backendType == 'E' && operation.kind != OperationKind.SIMPLE)
+        session.discardUntilReady = true;
+      return operation;
+    }
+  }
+
+  private void awaitForwarded(Operation operation) {
+    try {
+      if (!operation.forwarded.await(5, TimeUnit.SECONDS))
+        throw new IllegalStateException("Backend replied before frontend write completed");
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Interrupted awaiting frontend write", exception);
+    }
+  }
+
+  private boolean shouldWithhold(
+      Session session, Operation operation, int type, boolean commitComplete) {
+    if (!armed || !isTarget(session) || !operation.kind.isExecutable()) return false;
+    if (loss == Loss.COMMIT_REPLY && operation.sql.equals("COMMIT"))
+      return type == 'E' || commitComplete;
+    if (loss == Loss.FLUSH_REPLY && operation.sql.equals("UPDATE_ROOMS"))
+      return type == 'C' || type == 'E';
+    return loss == Loss.STATEMENT_REPLY
+        && operation.sql.equals("STATEMENT_FAULT")
+        && (type == 'C' || type == 'E');
+  }
+
+  private boolean isTarget(Session session) {
+    return armedPid == ALL_CONNECTIONS || session.pid == armedPid;
+  }
+
+  private boolean shouldObserve(Session session) {
+    return armed && isTarget(session);
+  }
+
+  private void event(
+      Session session,
+      Operation operation,
+      String event,
+      String sql,
+      String backendType,
+      String detail) {
+    int pid;
+    synchronized (session) {
+      pid = session.pid;
+    }
+    events.add(
+        new WireEvent(
+            System.nanoTime(),
+            pid,
+            operation == null ? NO_EXCHANGE : operation.sequence,
+            event,
+            sql,
+            backendType,
+            detail));
+  }
+
+  private static String classify(String query) {
+    String normalized = query.trim().toUpperCase(Locale.ROOT);
+    if (normalized.equals("COMMIT")) return "COMMIT";
+    if (normalized.startsWith("UPDATE ROOMS")) return "UPDATE_ROOMS";
+    if (normalized.contains("NK75_STATEMENT_FAULT")) return "STATEMENT_FAULT";
+    if (normalized.startsWith("ROLLBACK")) return "ROLLBACK";
+    return "OTHER";
+  }
+
+  private static String errorSqlState(byte[] bytes) {
+    for (int offset = 0; offset < bytes.length && bytes[offset] != 0; ) {
+      int field = bytes[offset++];
+      String value = cstring(bytes, offset);
+      offset += value.getBytes(StandardCharsets.UTF_8).length + 1;
+      if (field == 'C') return value;
+    }
+    return "missing-sqlstate";
   }
 
   private static String commandTag(byte[] bytes) {
-    return new String(bytes, 0, end(bytes, 0), StandardCharsets.UTF_8);
+    return cstring(bytes, 0);
   }
 
-  private static int end(byte[] bytes, int start) {
-    int i = start;
-    while (i < bytes.length && bytes[i] != 0) {
-      i++;
-    }
-    return i;
+  private static int intAt(byte[] bytes, int offset) {
+    if (offset + 4 > bytes.length)
+      throw new IllegalStateException("Truncated PostgreSQL BackendKeyData frame");
+    return ((bytes[offset] & 0xff) << 24)
+        | ((bytes[offset + 1] & 0xff) << 16)
+        | ((bytes[offset + 2] & 0xff) << 8)
+        | (bytes[offset + 3] & 0xff);
+  }
+
+  private static String cstring(byte[] bytes, int start) {
+    int end = start;
+    while (end < bytes.length && bytes[end] != 0) end++;
+    if (end == bytes.length)
+      throw new IllegalStateException("Missing PostgreSQL string terminator");
+    return new String(bytes, start, end - start, StandardCharsets.UTF_8);
   }
 
   private static byte[] body(DataInputStream input) throws IOException {
     int size = input.readInt() - 4;
-    if (size < 0 || size > 1024 * 1024) {
+    if (size < 0 || size > 1024 * 1024)
       throw new IOException("Unexpected frame length in isolated PostgreSQL fixture");
-    }
     byte[] bytes = input.readNBytes(size);
-    if (bytes.length != size) {
-      throw new EOFException("Truncated PostgreSQL frame");
-    }
+    if (bytes.length != size) throw new EOFException("Truncated PostgreSQL frame");
     return bytes;
   }
 
@@ -254,20 +492,104 @@ final class NkCreateCommitWire implements AutoCloseable {
 
   @Override
   public void close() throws IOException {
+    if (!closed.compareAndSet(false, true)) return;
     listener.close();
+    for (Socket socket : sockets) socket.close();
+    tasks.shutdownNow();
     tasks.close();
   }
 
-  private enum Kind {
-    COMMIT,
-    FLUSH
+  private enum OperationKind {
+    PARSE {
+      boolean accepts(int type) {
+        return type == '1' || type == 'E';
+      }
+    },
+    BIND {
+      boolean accepts(int type) {
+        return type == '2' || type == 'E';
+      }
+    },
+    EXECUTE {
+      boolean accepts(int type) {
+        return type == 'C' || type == 'E';
+      }
+    },
+    SIMPLE {
+      boolean accepts(int type) {
+        return type == 'C' || type == 'E';
+      }
+    };
+
+    abstract boolean accepts(int type);
+
+    boolean isExecutable() {
+      return this == EXECUTE || this == SIMPLE;
+    }
   }
 
-  private static final class Exchange {
-    private volatile Kind kind;
-    private volatile int frames;
-    private volatile String expectedFrames;
-    private volatile boolean parseComplete;
-    private volatile boolean bindComplete;
+  private static final class Operation {
+    private final long sequence;
+    private final OperationKind kind;
+    private final String sql;
+    private final CountDownLatch forwarded = new CountDownLatch(1);
+
+    private Operation(long sequence, OperationKind kind, String sql) {
+      this.sequence = sequence;
+      this.kind = kind;
+      this.sql = sql;
+    }
+  }
+
+  private static final class Session {
+    private final long connection;
+    private final Map<String, String> statements = new HashMap<>();
+    private final Map<String, String> portals = new HashMap<>();
+    private final ArrayDeque<Operation> operations = new ArrayDeque<>();
+    private final ArrayDeque<Long> syncBoundaries = new ArrayDeque<>();
+    private int pid = -1;
+    private long nextSequence;
+    private boolean discardUntilReady;
+    private volatile boolean expectedClose;
+
+    private Session(long connection) {
+      this.connection = connection;
+    }
+
+    private synchronized Operation operation(OperationKind kind, String sql) {
+      Operation operation = new Operation(nextSequence++, kind, sql);
+      operations.addLast(operation);
+      return operation;
+    }
+
+    private synchronized void sync() {
+      syncBoundaries.addLast(nextSequence);
+    }
+
+    private synchronized void readyForQuery() {
+      long boundary = syncBoundaries.isEmpty() ? Long.MAX_VALUE : syncBoundaries.removeFirst();
+      discardUntilReady = false;
+      while (!operations.isEmpty() && operations.peekFirst().sequence < boundary)
+        operations.removeFirst();
+    }
+  }
+
+  private static final class Cursor {
+    private final byte[] bytes;
+    private int position;
+
+    private Cursor(byte[] bytes) {
+      this.bytes = bytes;
+    }
+
+    private String string() {
+      int start = position;
+      while (position < bytes.length && bytes[position] != 0) position++;
+      if (position == bytes.length)
+        throw new IllegalStateException("Missing PostgreSQL frontend string terminator");
+      String value = new String(bytes, start, position - start, StandardCharsets.UTF_8);
+      position++;
+      return value;
+    }
   }
 }

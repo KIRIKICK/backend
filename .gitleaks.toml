@@ -1,0 +1,31 @@
+# Preserve all default rules and exempt only these synthetic idempotency fixtures.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic request keys in OpenRoom HTTP PostgreSQL tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^api/src/test/java/org/kirikick/api/publication/phase1/OpenRoomHttpPostgresTest\.java$''']
+regexes = [
+  '''^1b541b3d-498b-4a79-894c-e0d2cc8423ee$''',
+  '''^1b541b3d-498b-4a79-894c-e0d2cc8423ef$''',
+  '''^1b541b3d-498b-4a79-894c-e0d2cc8423f3$''',
+  '''^1b541b3d-498b-4a79-894c-e0d2cc8423f0$''',
+]
+
+[[allowlists]]
+description = "Synthetic request keys in OpenRoom HTTP acceptance PostgreSQL tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^api/src/test/java/org/kirikick/api/publication/phase1/OpenRoomHttpAcceptancePostgresTest\.java$''']
+regexes = [
+  '''^8aa20f38-0a6f-4b9d-97e5-45b5250c3e1a$''',
+  '''^8aa20f38-0a6f-4b9d-97e5-45b5250c3e1b$''',
+  '''^8aa20f38-0a6f-4b9d-97e5-45b5250c3e1e$''',
+  '''^8aa20f38-0a6f-4b9d-97e5-45b5250c3e1d$''',
+  '''^8aa20f38-0a6f-4b9d-97e5-45b5250c3e1c$''',
+  '''^8aa20f38-0a6f-4b9d-97e5-45b5250c3e1f$''',
+]
