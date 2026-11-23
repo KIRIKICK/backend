@@ -19,7 +19,7 @@
 - 방 마감: `closes_at = opened_at + 24시간`
 - 멱등성 기록 만료: `record_expires_at = opened_at + 24시간 + 30분 + publication.grace`
 
-`publication.grace`는 `PublicationConfiguration`을 **명시적으로 가져온 컨텍스트에서만** 바인딩·검증한다. 필수이며 0 이상, 마이크로초 단위의 기간이어야 한다. 현재 기본 앱 기동에는 이 설정을 연결하지 않았다.
+기본 애플리케이션은 유효한 `publication.grace`가 설정된 경우에만 출제 서비스와 `POST /games`를 등록한다. 설정이 없으면 출제 API는 등록되지 않으며, 빈 값이나 잘못된 기간을 설정하면 기동에 실패한다. Grace는 0 이상이며 마이크로초 단위로 표현할 수 있어야 한다. 이 값은 멱등성 기록의 보존 기간만 늘리고 방의 24시간 접수 기간은 바꾸지 않는다. 설정 위치는 [출제 API 활성화](../deployment/cloud-run-cd.md#출제-api-활성화)를 참고한다.
 
 ## 오류와 범위
 
