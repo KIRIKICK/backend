@@ -49,6 +49,30 @@ class NkCreateJdbcCommitPostgresTest {
   }
 
   @Test
+  @DisplayName("relay는 12초 넘게 유휴 상태인 풀 연결을 전송 장애로 처리하지 않는다")
+  void idlePooledConnectionRemainsUsable() throws SQLException {
+    POSTGRES.inMigratedSchema(
+        "NK75-idle-wire",
+        (ignored, direct) -> {
+          URI upstream = URI.create(direct.getJdbcUrl().substring("jdbc:".length()));
+          try (var wire =
+                  new NkCreateCommitWire(upstream.getHost(), upstream.getPort(), Loss.NONE);
+              var pool = new HikariDataSource(proxiedPool(direct, upstream, wire.port()));
+              var connection = pool.getConnection()) {
+            assertThat(connection.isValid(2)).isTrue();
+            // 실제 소켓의 기존 12초 유휴 한도를 넘기며, 대기 중 DB 쿼리를 보내지 않는다.
+            CompletableFuture.runAsync(
+                    () -> {}, CompletableFuture.delayedExecutor(13, TimeUnit.SECONDS))
+                .get(20, TimeUnit.SECONDS);
+            wire.requireHealthy();
+            assertThat(connection.isValid(2)).isTrue();
+          } catch (Exception exception) {
+            throw new AssertionError(exception);
+          }
+        });
+  }
+
+  @Test
   @DisplayName("실제 COMMIT 응답 유실은 JDBC 경계에서 커밋과 중단을 구분하지 못한다")
   void trueCommitReplyLossLooksIdenticalOnJdbcForCommitAndAbort() throws SQLException {
     POSTGRES.inMigratedSchema(

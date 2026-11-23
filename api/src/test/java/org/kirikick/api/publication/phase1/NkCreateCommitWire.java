@@ -152,6 +152,9 @@ final class NkCreateCommitWire implements AutoCloseable {
       DataInputStream fromPg = new DataInputStream(upstream.getInputStream());
       DataOutputStream toPg = new DataOutputStream(upstream.getOutputStream());
       startup(fromClient, toClient, fromPg, toPg);
+      // Pooled connections may be idle; request deadlines and close() bound the relay lifetime.
+      client.setSoTimeout(0);
+      upstream.setSoTimeout(0);
       Session relaySession = new Session(connections.incrementAndGet());
       session = relaySession;
       tasks.execute(() -> replies(client, upstream, fromPg, toClient, relaySession));

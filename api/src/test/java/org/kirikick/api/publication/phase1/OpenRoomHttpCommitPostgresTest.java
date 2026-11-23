@@ -87,7 +87,8 @@ class OpenRoomHttpCommitPostgresTest {
     registry.add("spring.flyway.enabled", () -> true);
     registry.add("spring.flyway.default-schema", () -> "nk75_http_commit");
     registry.add("publication.grace", () -> "PT5M");
-    registry.add("spring.datasource.hikari.connection-timeout", () -> 250);
+    // This pool also serves fixture/auth/audit SQL and must replace connections after wire faults.
+    registry.add("spring.datasource.hikari.connection-timeout", () -> 5_000);
   }
 
   @BeforeEach
