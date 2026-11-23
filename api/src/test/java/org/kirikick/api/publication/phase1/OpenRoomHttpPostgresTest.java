@@ -1,20 +1,28 @@
 package org.kirikick.api.publication.phase1;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.willReturn;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.SignupApplication;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.support.AuthTestSettings;
+import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.game.domain.Choice;
 import org.kirikick.api.game.domain.Game;
 import org.kirikick.api.question.domain.QuestionPreset;
@@ -34,6 +42,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 /**
  * Actual HTTP, security and PostgreSQL boundary for NkCreate; fault injection is deliberately
@@ -53,6 +62,7 @@ class OpenRoomHttpPostgresTest {
   @Autowired private UserRepository users;
 
   @Autowired private LoginSessionService logins;
+  @MockitoSpyBean private DbTimeSource time;
 
   @DynamicPropertySource
   static void infrastructure(DynamicPropertyRegistry registry) {
@@ -266,11 +276,15 @@ class OpenRoomHttpPostgresTest {
         .isZero();
   }
 
-  @Test
-  @DisplayName("실제 POST는 실제 마감된 OPEN 방을 CLOSED로 전이하고 새 방을 원자적으로 공개한다")
-  void postClosesExpiredOpenRoomBeforePublishingANewRoom() throws Exception {
+  @ParameterizedTest(name = "고정 현재 시각 대비 마감={0}µs")
+  @ValueSource(longs = {-1, 0, 1})
+  @DisplayName("실제 POST는 고정 시각의 마감 경계부터 OPEN 방을 닫고 새 방을 공개한다")
+  void postClosesExpiredOpenRoomBeforePublishingANewRoom(long offsetMicros) throws Exception {
     NkCreateHttpFixture.Fixture fixture = fixture().fixture();
-    long expiredRoomId = insertRoom(fixture, "OPEN", "now() - interval '1 microsecond'");
+    Clock clock = fixedClock();
+    long expiredRoomId =
+        insertRoom(fixture, "OPEN", clock.instant().plusNanos(offsetMicros * 1_000));
+    PublicationCounts before = publicationCounts(fixture.user().getId());
 
     HttpResponse<String> response =
         fixture()
@@ -281,6 +295,13 @@ class OpenRoomHttpPostgresTest {
                 fixture.choiceIds().getFirst(),
                 fixture.rewardId());
 
+    if (offsetMicros > 0) {
+      assertThat(response.statusCode()).isEqualTo(409);
+      assertThat(json.readTree(response.body()).required("code").textValue())
+          .isEqualTo("OPEN_ROOM_EXISTS");
+      assertThat(publicationCounts(fixture.user().getId())).isEqualTo(before);
+      return;
+    }
     assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(201);
     long newRoomId = Long.parseLong(json.readTree(response.body()).required("roomId").textValue());
     assertThat(newRoomId).isNotEqualTo(expiredRoomId);
@@ -298,10 +319,13 @@ class OpenRoomHttpPostgresTest {
         .isEqualTo(1L);
   }
 
-  @Test
-  @DisplayName("실제 POST는 논리 만료된 성공 기록을 새 세대로 교체하되 기존 Game은 보존한다")
-  void postReplacesExpiredSuccessRecordWithoutDeletingItsExistingGame() throws Exception {
+  @ParameterizedTest(name = "고정 현재 시각 대비 기록 만료={0}µs")
+  @ValueSource(longs = {-1, 0, 1})
+  @DisplayName("실제 POST는 고정 시각의 기록 만료 경계부터 세대를 교체하고 기존 Game을 보존한다")
+  void postReplacesExpiredSuccessRecordWithoutDeletingItsExistingGame(long offsetMicros)
+      throws Exception {
     NkCreateHttpFixture.Fixture fixture = fixture().fixture();
+    Clock clock = fixedClock();
     String key = "1b541b3d-498b-4a79-894c-e0d2cc8423f3";
     HttpResponse<String> first =
         fixture()
@@ -318,12 +342,15 @@ class OpenRoomHttpPostgresTest {
         .param("roomId", priorRoomId)
         .update();
     jdbc.sql(
-            "update publication_idempotency set record_expires_at = now() - interval '1 microsecond' "
+            "update publication_idempotency set record_expires_at = :expiresAt "
                 + "where user_id = :userId and request_key = :key")
+        .param(
+            "expiresAt", clock.instant().plusNanos(offsetMicros * 1_000).atOffset(ZoneOffset.UTC))
         .param("userId", fixture.user().getId())
         .param("key", key)
         .update();
 
+    PublicationCounts before = publicationCounts(fixture.user().getId());
     HttpResponse<String> replacement =
         fixture()
             .post(
@@ -333,6 +360,13 @@ class OpenRoomHttpPostgresTest {
                 fixture.choiceIds().getFirst(),
                 fixture.alternateRewardId());
 
+    if (offsetMicros > 0) {
+      assertThat(replacement.statusCode()).isEqualTo(409);
+      assertThat(json.readTree(replacement.body()).required("code").textValue())
+          .isEqualTo("IDEMPOTENCY_KEY_CONFLICT");
+      assertThat(publicationCounts(fixture.user().getId())).isEqualTo(before);
+      return;
+    }
     assertThat(replacement.statusCode()).withFailMessage(replacement.body()).isEqualTo(201);
     long replacementGameId =
         Long.parseLong(json.readTree(replacement.body()).required("gameId").textValue());
@@ -406,6 +440,7 @@ class OpenRoomHttpPostgresTest {
             fixture.choiceIds());
     String key = "1b541b3d-498b-4a79-894c-e0d2cc8423f0";
 
+    PublicationCounts before = publicationCounts(fixture.user().getId());
     HttpResponse<String> response =
         fixture()
             .post(
@@ -418,14 +453,7 @@ class OpenRoomHttpPostgresTest {
     assertThat(response.statusCode()).isEqualTo(404);
     assertThat(json.readTree(response.body()).required("code").textValue())
         .isEqualTo("PRESET_NOT_FOUND");
-    assertThat(
-            jdbc.sql(
-                    "select count(*) from publication_idempotency where user_id = :userId and request_key = :key")
-                .param("userId", fixture.user().getId())
-                .param("key", key)
-                .query(Long.class)
-                .single())
-        .isZero();
+    assertThat(publicationCounts(fixture.user().getId())).isEqualTo(before);
   }
 
   @Test
@@ -457,8 +485,57 @@ class OpenRoomHttpPostgresTest {
         .containsIgnoringCase("Idempotency-Key");
   }
 
+  private Clock fixedClock() {
+    Clock clock = Clock.fixed(Instant.parse("2040-01-01T00:00:00Z"), ZoneOffset.UTC);
+    willReturn(clock.instant()).given(time).readCurrentTime();
+    return clock;
+  }
+
+  private PublicationCounts publicationCounts(long userId) {
+    long rooms =
+        jdbc.sql("select count(*) from rooms where host_user_id = :userId")
+            .param("userId", userId)
+            .query(Long.class)
+            .single();
+    long games =
+        jdbc.sql(
+                "select count(*) from games g join rooms r on r.id = g.room_id where r.host_user_id = :userId")
+            .param("userId", userId)
+            .query(Long.class)
+            .single();
+    long choices =
+        jdbc.sql(
+                "select count(*) from choices c join games g on g.id = c.game_id join rooms r on r.id = g.room_id where r.host_user_id = :userId")
+            .param("userId", userId)
+            .query(Long.class)
+            .single();
+    long records =
+        jdbc.sql("select count(*) from publication_idempotency where user_id = :userId")
+            .param("userId", userId)
+            .query(Long.class)
+            .single();
+    return new PublicationCounts(rooms, games, choices, records);
+  }
+
+  private record PublicationCounts(long rooms, long games, long choices, long records) {}
+
   private NkCreateHttpFixture fixture() {
     return new NkCreateHttpFixture(port, json, jdbc, users, logins);
+  }
+
+  private long insertRoom(NkCreateHttpFixture.Fixture fixture, String status, Instant closesAt) {
+    return jdbc.sql(
+            """
+            insert into rooms(host_user_id, selected_reward_preset_id, status, result_state, opened_at, closes_at, created_at)
+            values (:userId, :rewardId, :status, 'NOT_READY', :openedAt, :closesAt, now()) returning id
+            """)
+        .param("userId", fixture.user().getId())
+        .param("rewardId", fixture.rewardId())
+        .param("status", status)
+        .param("openedAt", closesAt.minus(Duration.ofHours(24)).atOffset(ZoneOffset.UTC))
+        .param("closesAt", closesAt.atOffset(ZoneOffset.UTC))
+        .query(Long.class)
+        .single();
   }
 
   private long insertRoom(

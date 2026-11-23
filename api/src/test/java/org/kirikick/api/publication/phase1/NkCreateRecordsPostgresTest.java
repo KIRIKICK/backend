@@ -263,19 +263,91 @@ class NkCreateRecordsPostgresTest {
       var f = fixture(db);
       var records = recordsAt(db, 0);
       var later = EXPIRY.plusSeconds(60);
-      assertThatThrownBy(() ->
-              tx.executeWithoutResult(status -> {
-                var old = records.tryClaim(f.user(), "same-xid", f.input()).orElseThrow();
-                records.completeClaim(old, f.game(), EXPIRY);
-                assertThat(records.reserveNkCreate(f.user(), "same-xid", f.input()))
-                    .isInstanceOf(Claim.class);
-                records.completeClaim(old, f.game(), later);
-              }))
-          .isInstanceOf(DomainException.class);
+
+      tx.executeWithoutResult(status -> {
+        var old = records.tryClaim(f.user(), "same-xid", f.input()).orElseThrow();
+        records.completeClaim(old, f.game(), EXPIRY);
+        var fresh = (Claim) records.reserveNkCreate(f.user(), "same-xid", f.input());
+
+        assertThat(fresh).isNotSameAs(old);
+        assertThatThrownBy(() -> records.completeClaim(old, f.game(), later))
+            .isInstanceOfSatisfying(
+                DomainException.class,
+                error ->
+                    assertThat(error.getErrorCode())
+                        .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED));
+        status.setRollbackOnly();
+      });
+
       assertThat(id(db, "select count(*) from publication_idempotency where user_id = ?", f.user()))
           .isZero();
       assertThat(id(db, "select count(*) from games where id = ?", f.game())).isOne();
     });
+  }
+
+  @Test
+  @DisplayName("완료 claim은 저장된 입력과 다른 질문·보상 또는 없는 게임에 연결하지 않는다")
+  void completionRejectsAGameThatCannotBeVerifiedAgainstTheStoredInput() throws SQLException {
+    inSchema((tx, db) -> {
+      var f = fixture(db);
+      var alternative = alternativeInput(db);
+      var differentQuestion =
+          game(
+                  db,
+                  f.user(),
+                  new PublicationInput(
+                      Kind.NK_CREATE,
+                      null,
+                      f.input().rewardPresetId(),
+                      alternative.questionPresetId(),
+                      alternative.choiceIds(),
+                      alternative.correctChoiceId()))
+              .game();
+      var differentReward =
+          game(
+                  db,
+                  f.user(),
+                  new PublicationInput(
+                      Kind.NK_CREATE,
+                      null,
+                      alternative.rewardPresetId(),
+                      f.input().questionPresetId(),
+                      f.input().choiceIds(),
+                      f.input().correctChoiceId()))
+              .game();
+      var records = recordsAt(db, -1);
+
+      assertCompletionIsUnreadable(tx, db, records, f, "mismatched-question", differentQuestion);
+      assertCompletionIsUnreadable(tx, db, records, f, "mismatched-reward", differentReward);
+      assertCompletionIsUnreadable(tx, db, records, f, "missing-game", Long.MAX_VALUE);
+    });
+  }
+
+  private static void assertCompletionIsUnreadable(
+      TransactionTemplate tx,
+      JdbcClient db,
+      PublicationIdempotencyRepository records,
+      Fixture fixture,
+      String requestKey,
+      long gameId) {
+    assertThatThrownBy(() ->
+            tx.executeWithoutResult(status -> {
+              var claim =
+                  records.tryClaim(fixture.user(), requestKey, fixture.input()).orElseThrow();
+              records.completeClaim(claim, gameId, EXPIRY);
+            }))
+        .isInstanceOfSatisfying(
+            DomainException.class,
+            error ->
+                assertThat(error.getErrorCode())
+                    .isEqualTo(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD));
+    assertThat(
+            id(
+                db,
+                "select count(*) from publication_idempotency where user_id = ? and request_key = ?",
+                fixture.user(),
+                requestKey))
+        .isZero();
   }
 
   @Test
@@ -636,6 +708,22 @@ class NkCreateRecordsPostgresTest {
       @Override
       void apply(JdbcClient db, Fixture f) {
         db.sql("delete from choices where game_id = ? and position = 3").param(f.game()).update();
+      }
+    },
+    QUESTION {
+      @Override
+      void apply(JdbcClient db, Fixture f) {
+        db.sql("update games set question_preset_id = ? where id = ?")
+            .params(alternativeInput(db).questionPresetId(), f.game())
+            .update();
+      }
+    },
+    REWARD {
+      @Override
+      void apply(JdbcClient db, Fixture f) {
+        db.sql("update rooms set selected_reward_preset_id = ? where id = ?")
+            .params(alternativeInput(db).rewardPresetId(), f.room())
+            .update();
       }
     };
 

@@ -18,12 +18,17 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.IntConsumer;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -64,8 +69,11 @@ class OpenRoomHttpCommitPostgresTest {
   private static final String F10_KEY = "00000000-0000-4000-8000-000000000010";
   private static final NkCreateCommitWire WIRE = wire();
   private static final AtomicReference<Fault> NEXT_FAULT = new AtomicReference<>(Fault.NONE);
+  private static final Duration XID_ABORT_TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration XID_POLL_INTERVAL = Duration.ofMillis(20);
 
   private final Map<String, Map<String, Object>> databaseBefore = new LinkedHashMap<>();
+  private final Set<String> armedKeys = new LinkedHashSet<>();
   @LocalServerPort private int port;
   @Autowired private ObjectMapper json;
   @Autowired private JdbcClient jdbc;
@@ -148,14 +156,36 @@ class OpenRoomHttpCommitPostgresTest {
 
   @AfterEach
   void resetFaults() {
-    WIRE.disarm();
-    NEXT_FAULT.set(Fault.NONE);
-    reset(records);
+    try {
+      WIRE.disarm();
+      NEXT_FAULT.set(Fault.NONE);
+    } finally {
+      armedKeys.forEach(NkCreateHttpCommitProbe::disarm);
+      armedKeys.clear();
+      reset(records);
+    }
   }
 
   @AfterAll
   static void close() throws Exception {
     WIRE.close();
+  }
+
+  private NkCreateHttpCommitProbe.Case arm(String id, String key, IntConsumer commitEntering) {
+    armedKeys.add(key);
+    return NkCreateHttpCommitProbe.arm(id, key, commitEntering);
+  }
+
+  private NkCreateHttpCommitProbe.Case arm(
+      String id, String key, IntConsumer connectionAcquired, IntConsumer commitEntering) {
+    armedKeys.add(key);
+    return NkCreateHttpCommitProbe.arm(id, key, connectionAcquired, commitEntering);
+  }
+
+  private NkCreateHttpCommitProbe.Case armResponseLoss(
+      String id, String key, IntConsumer commitEntering) {
+    armedKeys.add(key);
+    return NkCreateHttpCommitProbe.armResponseLoss(id, key, commitEntering);
   }
 
   @Test
@@ -164,7 +194,7 @@ class OpenRoomHttpCommitPostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture();
     NEXT_FAULT.set(Fault.COMMIT_REPLY);
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.arm("F05", F05_KEY, pid -> WIRE.arm(pid, Fault.COMMIT_REPLY.loss));
+        arm("F05", F05_KEY, pid -> WIRE.arm(pid, Fault.COMMIT_REPLY.loss));
     HttpResponse<String> response = post(fixture, F05_KEY);
     List<NkCreateCommitWire.WireEvent> initialEvents = WIRE.events();
     recordEvidence("F05", F05_KEY, fixture, initial, initialEvents, response);
@@ -175,10 +205,8 @@ class OpenRoomHttpCommitPostgresTest {
         .extracting(NkCreateCommitWire.WireEvent::event)
         .contains("COMMIT_FORWARDED", "BACKEND_REPLY_WITHHELD");
     WIRE.disarm();
-    NkCreateHttpCommitProbe.disarm(F05_KEY);
     NkCreateHttpCommitProbe.Case replayProbe =
-        NkCreateHttpCommitProbe.arm(
-            "F05_REPLAY", F05_KEY, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
+        arm("F05_REPLAY", F05_KEY, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
     HttpResponse<String> replay = post(fixture, F05_KEY);
     recordEvidence("F05_REPLAY", F05_KEY, fixture, replayProbe, WIRE.events(), replay);
     assertError(response, 503, "PUBLICATION_UNAVAILABLE");
@@ -196,7 +224,7 @@ class OpenRoomHttpCommitPostgresTest {
     long oldRoomId = insertExpiredOpenRoom(fixture);
     NEXT_FAULT.set(Fault.COMMIT_REPLY);
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.arm("F09", F09_KEY, pid -> WIRE.arm(pid, Fault.COMMIT_REPLY.loss));
+        arm("F09", F09_KEY, pid -> WIRE.arm(pid, Fault.COMMIT_REPLY.loss));
     HttpResponse<String> response = post(fixture, F09_KEY);
     List<NkCreateCommitWire.WireEvent> initialEvents = WIRE.events();
     recordEvidence("F09", F09_KEY, fixture, initial, initialEvents, response);
@@ -224,8 +252,7 @@ class OpenRoomHttpCommitPostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture();
     long oldRoomId = insertExpiredOpenRoom(fixture);
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.arm(
-            "F10", F10_KEY, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
+        arm("F10", F10_KEY, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
     HttpResponse<String> response = post(fixture, F10_KEY);
     recordEvidence("F10", F10_KEY, fixture, initial, WIRE.events(), response);
     assertAbortedDatabase(F10_KEY, fixture, initial);
@@ -248,8 +275,7 @@ class OpenRoomHttpCommitPostgresTest {
     String key = UUID.randomUUID().toString();
     insertExpiredOpenRoom(fixture);
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.arm(
-            "F06", key, pid -> WIRE.arm(pid, Fault.FLUSH_REPLY.loss), ignored -> {});
+        arm("F06", key, pid -> WIRE.arm(pid, Fault.FLUSH_REPLY.loss), ignored -> {});
     HttpResponse<String> response = post(fixture, key);
     List<NkCreateCommitWire.WireEvent> initialEvents = WIRE.events();
     recordEvidence("F06", key, fixture, initial, initialEvents, response);
@@ -267,7 +293,7 @@ class OpenRoomHttpCommitPostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture();
     long pendingRoomId = insertUnrelatedOpenRoom(fixture);
     String key = UUID.randomUUID().toString();
-    NkCreateHttpCommitProbe.Case initial = NkCreateHttpCommitProbe.arm("F11", key, ignored -> {});
+    NkCreateHttpCommitProbe.Case initial = arm("F11", key, ignored -> {});
     initial.flushAtJpaTransactionManagerCommit(() -> {
       entityManager.find(Room.class, pendingRoomId).closeIntake();
       WIRE.arm(initial.backendPid(), Fault.FLUSH_REPLY.loss);
@@ -312,8 +338,7 @@ class OpenRoomHttpCommitPostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture();
     String key = UUID.randomUUID().toString();
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.arm(
-            "F08", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE), ignored -> {});
+        arm("F08", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE), ignored -> {});
     NEXT_FAULT.set(Fault.ROLLBACK_ONLY);
     HttpResponse<String> response = post(fixture, key);
     recordEvidence("F08", key, fixture, initial, WIRE.events(), response);
@@ -329,7 +354,7 @@ class OpenRoomHttpCommitPostgresTest {
   void returnsInternalErrorForPublicationPoolAcquisitionFailure() throws Exception {
     NkCreateHttpFixture.Fixture fixture = fixture();
     String key = UUID.randomUUID().toString();
-    NkCreateHttpCommitProbe.Case initial = NkCreateHttpCommitProbe.arm("F04", key, ignored -> {});
+    NkCreateHttpCommitProbe.Case initial = arm("F04", key, ignored -> {});
     HttpResponse<String> response;
     response = post(fixture, key);
     recordEvidence("F04", key, fixture, initial, WIRE.events(), response);
@@ -356,7 +381,7 @@ class OpenRoomHttpCommitPostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture();
     String key = UUID.randomUUID().toString();
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.arm(caseId, key, pid -> WIRE.arm(pid, loss), ignored -> {});
+        arm(caseId, key, pid -> WIRE.arm(pid, loss), ignored -> {});
     HttpResponse<String> response = post(fixture, key);
     recordEvidence(caseId, key, fixture, initial, WIRE.events(), response);
     assertAbortedDatabase(key, fixture, initial);
@@ -377,8 +402,7 @@ class OpenRoomHttpCommitPostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture();
     String key = UUID.randomUUID().toString();
     NkCreateHttpCommitProbe.Case initial =
-        NkCreateHttpCommitProbe.armResponseLoss(
-            "F07", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
+        armResponseLoss("F07", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
     Exception deliveryFailure = null;
     HttpResponse<String> response = null;
     try {
@@ -397,10 +421,8 @@ class OpenRoomHttpCommitPostgresTest {
     assertThat(auditSnapshot(key, fixture, initial).get("xidStatus")).isEqualTo("committed");
     JsonNode originalResult = json.valueToTree(auditPublishedResult(key));
     String expiresAt = auditRecordExpiresAt(key);
-    NkCreateHttpCommitProbe.disarm(key);
     NkCreateHttpCommitProbe.Case replayProbe =
-        NkCreateHttpCommitProbe.arm(
-            "F07_REPLAY", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
+        arm("F07_REPLAY", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
     HttpResponse<String> replay = post(fixture, key);
     recordEvidence("F07_REPLAY", key, fixture, replayProbe, WIRE.events(), replay);
     assertThat(replay.statusCode()).withFailMessage(replay.body()).isEqualTo(200);
@@ -620,7 +642,29 @@ class OpenRoomHttpCommitPostgresTest {
             "choiceRows")) {
       assertThat(after.get(field)).as(field).isEqualTo(before.get(field));
     }
-    if (testCase.xid() != null) assertThat(after.get("xidStatus")).isEqualTo("aborted");
+    if (testCase.xid() != null) assertThat(awaitAbortedXid(testCase.xid())).isEqualTo("aborted");
+  }
+
+  private String awaitAbortedXid(String xid) throws SQLException {
+    long deadline = System.nanoTime() + XID_ABORT_TIMEOUT.toNanos();
+    String lastStatus = null;
+    while (true) {
+      try (Connection connection =
+          DriverManager.getConnection(
+              databaseUrl(),
+              PostgresTestDatabase.container().getUsername(),
+              PostgresTestDatabase.container().getPassword())) {
+        lastStatus = xidStatus(connection, xid);
+      }
+      if ("aborted".equals(lastStatus)) return lastStatus;
+      if (System.nanoTime() >= deadline) {
+        assertThat(lastStatus)
+            .withFailMessage(
+                "xid %s did not become aborted; last observed state was %s", xid, lastStatus)
+            .isEqualTo("aborted");
+      }
+      LockSupport.parkNanos(XID_POLL_INTERVAL.toNanos());
+    }
   }
 
   private List<Map<String, String>> auditRows(Connection connection, String sql, Object parameter)

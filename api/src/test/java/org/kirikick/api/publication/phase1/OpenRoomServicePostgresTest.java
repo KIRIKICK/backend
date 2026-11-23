@@ -9,17 +9,23 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.kirikick.api.auth.domain.exception.AuthErrorCode;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.config.PublicationProperties;
@@ -99,6 +105,66 @@ class OpenRoomServicePostgresTest {
                       .query(Long.class)
                       .single())
               .isEqualTo(created.gameId());
+        });
+  }
+
+  @ParameterizedTest(name = "기존 OPEN 방={0}")
+  @ValueSource(booleans = {false, true})
+  @DisplayName("User 잠금 대기 중 정지가 커밋되면 최신 상태로 출제를 거절한다")
+  void rejectsAccountSuspendedDuringUserLockWait(boolean existingRoom) throws SQLException {
+    POSTGRES.inMigratedSchema(
+        "nkcreate-service-suspended-after-wait",
+        (context, pool) -> {
+          JdbcClient jdbc = context.getBean(JdbcClient.class);
+          Fixture fixture = fixture(jdbc);
+          Long oldRoom =
+              existingRoom
+                  ? insertRoom(
+                      jdbc, fixture, "OPEN", "NOT_READY", "now()", "now() + interval '24 hours'")
+                  : null;
+          OpenRoomService service = service(context);
+          try (Connection holder = pool.getConnection();
+              ExecutorService workers = Executors.newSingleThreadExecutor()) {
+            holder.setAutoCommit(false);
+            int holderPid = backendPid(holder);
+            try (var statement =
+                holder.prepareStatement("select id from users where uuid = ? for no key update")) {
+              statement.setObject(1, fixture.userUuid());
+              try (ResultSet result = statement.executeQuery()) {
+                assertThat(result.next()).isTrue();
+              }
+            }
+            Future<Object> pending =
+                workers.submit(() -> invoke(service, fixture, "suspended-during-wait"));
+            WaitEvidence wait = awaitUserWaiters(jdbc, holderPid, pending).getFirst();
+            try (var statement =
+                holder.prepareStatement("update users set status = 'SUSPENDED' where uuid = ?")) {
+              statement.setObject(1, fixture.userUuid());
+              assertThat(statement.executeUpdate()).isOne();
+            }
+            holder.commit();
+            assertThat(pending.get(10, TimeUnit.SECONDS))
+                .isInstanceOfSatisfying(
+                    DomainException.class,
+                    failure ->
+                        assertThat(failure.getErrorCode())
+                            .isEqualTo(AuthErrorCode.ACCOUNT_INACTIVE));
+            assertThat(wait.blockerPid()).isEqualTo(holderPid);
+            assertThat(count(jdbc, "rooms")).isEqualTo(existingRoom ? 1 : 0);
+            if (existingRoom) {
+              assertThat(
+                      jdbc.sql("select status from rooms where id = ?")
+                          .param(oldRoom)
+                          .query(String.class)
+                          .single())
+                  .isEqualTo("OPEN");
+            }
+            assertThat(count(jdbc, "games")).isZero();
+            assertThat(count(jdbc, "choices")).isZero();
+            assertThat(count(jdbc, "publication_idempotency")).isZero();
+          } catch (Exception exception) {
+            throw new AssertionError(exception);
+          }
         });
   }
 
@@ -237,7 +303,8 @@ class OpenRoomServicePostgresTest {
           assertThatThrownBy(() ->
                   service(context)
                       .publish(fixture.userUuid(), "choice-failure-key", input(fixture)))
-              .isInstanceOf(RuntimeException.class);
+              .isInstanceOf(RuntimeException.class)
+              .hasStackTraceContaining("choice assembly failure");
           assertThat(
                   jdbc.sql("select status from rooms where id = ?")
                       .param(oldRoom)
@@ -386,7 +453,7 @@ class OpenRoomServicePostgresTest {
   }
 
   @Test
-  @DisplayName("S-09: Room 실제 FOR UPDATE 대기 중 DB 마감 경계를 넘으면 기존 방을 닫고 새 방을 공개한다")
+  @DisplayName("S-09: 실제 Room 잠금 대기 후 제어 시각을 마감 정각으로 전진하면 기존 방을 닫고 공개한다")
   void closesAfterRealRoomLockWaitCrossesDeadline() throws Exception {
     POSTGRES.inMigratedSchema(
         "nkcreate-service-room-lock-deadline",
@@ -394,15 +461,23 @@ class OpenRoomServicePostgresTest {
           try {
             JdbcClient jdbc = context.getBean(JdbcClient.class);
             Fixture fixture = fixture(jdbc);
-            long oldRoom =
-                insertRoom(
-                    jdbc,
-                    fixture,
-                    "OPEN",
-                    "NOT_READY",
-                    "now() - interval '23 hours 59 minutes 59 seconds'",
-                    "now() + interval '1 second'");
-            OpenRoomService service = service(context);
+            Instant closesAt = Instant.parse("2040-01-02T00:00:00Z");
+            AtomicReference<Instant> now = new AtomicReference<>(closesAt.minusNanos(1_000));
+            DbTimeSource clock =
+                new DbTimeSource(jdbc) {
+                  @Override
+                  public Instant readCurrentTime() {
+                    return now.get();
+                  }
+                };
+            long oldRoom = insertRoom(jdbc, fixture, "OPEN", "NOT_READY", "null", "null");
+            jdbc.sql("update rooms set opened_at = ?, closes_at = ? where id = ?")
+                .params(
+                    closesAt.minus(Duration.ofHours(24)).atOffset(ZoneOffset.UTC),
+                    closesAt.atOffset(ZoneOffset.UTC),
+                    oldRoom)
+                .update();
+            OpenRoomService service = service(context, clock);
             try (Connection holder = pool.getConnection();
                 ExecutorService workers = Executors.newSingleThreadExecutor()) {
               holder.setAutoCommit(false);
@@ -419,18 +494,12 @@ class OpenRoomServicePostgresTest {
                       service.publish(
                           fixture.userUuid(), "room-lock-deadline-key", input(fixture)));
               WaitEvidence wait = awaitRoomWait(jdbc, holderPid, pending);
-              Instant closesAt =
-                  jdbc.sql("select closes_at from rooms where id = ?")
-                      .param(oldRoom)
-                      .query(Instant.class)
-                      .single();
-              Instant crossed = awaitDbDeadline(jdbc, closesAt, pending);
+              now.set(closesAt);
               holder.commit();
               OpenRoomService.Result created = pending.get(10, TimeUnit.SECONDS);
 
               assertThat(wait.blockerPid()).isEqualTo(holderPid);
               assertThat(wait.waitEventType()).isEqualTo("Lock");
-              assertThat(crossed).isAfterOrEqualTo(closesAt);
               assertThat(
                       jdbc.sql("select status from rooms where id = ?")
                           .param(oldRoom)
@@ -440,12 +509,12 @@ class OpenRoomServicePostgresTest {
               assertThat(created.roomId()).isNotEqualTo(oldRoom);
               assertThat(count(jdbc, "rooms")).isEqualTo(2);
               System.out.printf(
-                  "S-09 holderPid=%d waiterPid=%d blocker=%d wait=%s dbCrossed=%s closesAt=%s oldRoom=%d newRoom=%d%n",
+                  "S-09 holderPid=%d waiterPid=%d blocker=%d wait=%s controlledNow=%s closesAt=%s oldRoom=%d newRoom=%d%n",
                   holderPid,
                   wait.waiterPid(),
                   wait.blockerPid(),
                   wait.waitEventType(),
-                  crossed,
+                  now.get(),
                   closesAt,
                   oldRoom,
                   created.roomId());
@@ -528,25 +597,22 @@ class OpenRoomServicePostgresTest {
             JdbcClient jdbc = context.getBean(JdbcClient.class);
             Fixture fixture = fixture(jdbc);
             OpenRoomService service = service(context);
-            jdbc.sql(
-                    """
-                    create function hold_first_publication_claim() returns trigger language plpgsql as $$
-                    begin perform pg_advisory_xact_lock(775); return new; end $$;
-                    create trigger hold_first_publication_claim before insert on publication_idempotency
-                    for each row execute function hold_first_publication_claim()
-                    """)
-                .update();
             try (Connection holder = pool.getConnection();
                 ExecutorService workers = Executors.newFixedThreadPool(2)) {
               holder.setAutoCommit(false);
               int holderPid = backendPid(holder);
-              try (var statement = holder.createStatement()) {
-                statement.execute("select pg_advisory_xact_lock(775)");
+              try (var statement =
+                  holder.prepareStatement(
+                      "select id from users where uuid = ? for no key update")) {
+                statement.setObject(1, fixture.userUuid());
+                try (ResultSet result = statement.executeQuery()) {
+                  assertThat(result.next()).isTrue();
+                }
               }
               Future<OpenRoomService.Result> first =
                   workers.submit(
                       () -> service.publish(fixture.userUuid(), "same-key-race", input(fixture)));
-              WaitEvidence firstWait = awaitAnyPublicationWait(jdbc, holderPid, first);
+              WaitEvidence firstWait = awaitUserWaiters(jdbc, holderPid, first).getFirst();
               Future<OpenRoomService.Result> second =
                   workers.submit(
                       () -> service.publish(fixture.userUuid(), "same-key-race", input(fixture)));
@@ -556,6 +622,7 @@ class OpenRoomServicePostgresTest {
               OpenRoomService.Result firstResult = first.get(10, TimeUnit.SECONDS);
               OpenRoomService.Result secondResult = second.get(10, TimeUnit.SECONDS);
 
+              assertThat(firstWait.waiterPid()).isNotEqualTo(secondWait.waiterPid());
               assertThat(firstWait.blockerPid()).isEqualTo(holderPid);
               assertThat(secondWait.blockerPid()).isEqualTo(firstWait.waiterPid());
               assertThat(firstResult.created()).isTrue();
@@ -583,6 +650,10 @@ class OpenRoomServicePostgresTest {
   }
 
   private static OpenRoomService service(ApplicationContext context) {
+    return service(context, context.getBean(DbTimeSource.class));
+  }
+
+  private static OpenRoomService service(ApplicationContext context, DbTimeSource clock) {
     EntityManagerFactory entityManagerFactory = context.getBean(EntityManagerFactory.class);
     QuestionPresetChoiceRepository choices =
         new JpaRepositoryFactory(
@@ -599,7 +670,7 @@ class OpenRoomServicePostgresTest {
         choices,
         context.getBean(RewardPresetRepository.class),
         SharedEntityManagerCreator.createSharedEntityManager(entityManagerFactory),
-        context.getBean(DbTimeSource.class),
+        clock,
         new PublicationProperties(Duration.ofMinutes(5)),
         new PublicationCommitObserver());
   }
@@ -709,7 +780,7 @@ class OpenRoomServicePostgresTest {
   }
 
   private static List<WaitEvidence> awaitUserWaiters(
-      JdbcClient jdbc, int holderPid, Future<?> first, Future<?> second) {
+      JdbcClient jdbc, int holderPid, Future<?>... pending) {
     long deadline = System.nanoTime() + Duration.ofSeconds(7).toNanos();
     while (System.nanoTime() < deadline) {
       List<WaitEvidence> waits =
@@ -730,10 +801,10 @@ class OpenRoomServicePostgresTest {
                       row.getString(3),
                       row.getString(4)))
               .list();
-      if (waits.size() == 2) {
+      if (waits.size() == pending.length) {
         return waits;
       }
-      if (first.isDone() || second.isDone()) {
+      if (Arrays.stream(pending).anyMatch(Future::isDone)) {
         throw new AssertionError("service completed before both User lock waits were observed");
       }
       LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
@@ -786,21 +857,6 @@ class OpenRoomServicePostgresTest {
   private static int firstBlockingPid(String blockerPids) {
     String[] pids = blockerPids.split(",");
     return Integer.parseInt(pids[pids.length - 1]);
-  }
-
-  private static Instant awaitDbDeadline(JdbcClient jdbc, Instant closesAt, Future<?> pending) {
-    long deadline = System.nanoTime() + Duration.ofSeconds(7).toNanos();
-    while (System.nanoTime() < deadline) {
-      Instant now = jdbc.sql("select clock_timestamp()").query(Instant.class).single();
-      if (!now.isBefore(closesAt)) {
-        return now;
-      }
-      if (pending.isDone()) {
-        throw new AssertionError("service finished before DB closing deadline");
-      }
-      LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
-    }
-    throw new AssertionError("DB clock did not cross closing deadline");
   }
 
   private static long count(JdbcClient jdbc, String table) {

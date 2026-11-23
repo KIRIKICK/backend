@@ -479,7 +479,7 @@ class PublicationRecordPostgresTest {
           context,
           ignored -> {
             PublicationIdempotencyRepository.Claim claim =
-                repository(context).tryClaim(userId, "complete", input()).orElseThrow();
+                repository(context).tryClaim(userId, "complete", input(jdbc, gameId)).orElseThrow();
             repository(context).completeClaim(claim, gameId, expiry);
           });
 
@@ -511,7 +511,9 @@ class PublicationRecordPostgresTest {
           context,
           ignored -> {
             PublicationIdempotencyRepository.Claim claim =
-                repository(context).tryClaim(userId, "old-config", input()).orElseThrow();
+                repository(context)
+                    .tryClaim(userId, "old-config", input(jdbc, gameId))
+                    .orElseThrow();
             repository(context).completeClaim(claim, gameId, oldExpiry);
           });
       String oldExpirySql =
@@ -529,7 +531,9 @@ class PublicationRecordPostgresTest {
           ignored ->
               repository(context)
                   .completeClaim(
-                      repository(context).tryClaim(other, "new-config", input()).orElseThrow(),
+                      repository(context)
+                          .tryClaim(other, "new-config", input(jdbc, newerGame))
+                          .orElseThrow(),
                       newerGame,
                       newExpiry));
       assertThat(
@@ -615,7 +619,9 @@ class PublicationRecordPostgresTest {
                   context,
                   ignored -> {
                     PublicationIdempotencyRepository.Claim claim =
-                        repository(context).tryClaim(userId, "cas", input()).orElseThrow();
+                        repository(context)
+                            .tryClaim(userId, "cas", input(jdbc, gameId))
+                            .orElseThrow();
                     context
                         .getBean(JdbcClient.class)
                         .sql(
@@ -639,8 +645,8 @@ class PublicationRecordPostgresTest {
           .isZero();
       var transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
       var stale =
-          transaction.execute(
-              status -> repository(context).tryClaim(userId, "other-tx", input()).orElseThrow());
+          transaction.execute(status ->
+              repository(context).tryClaim(userId, "other-tx", input(jdbc, gameId)).orElseThrow());
       assertThatThrownBy(() ->
               inTransaction(
                   context,
@@ -679,9 +685,13 @@ class PublicationRecordPostgresTest {
               transaction.executeWithoutResult(status -> {
                 jdbc.sql("savepoint before_claim").update();
                 var stale =
-                    repository(context).tryClaim(userId, "savepoint-stale", input()).orElseThrow();
+                    repository(context)
+                        .tryClaim(userId, "savepoint-stale", input(jdbc, gameId))
+                        .orElseThrow();
                 jdbc.sql("rollback to savepoint before_claim").update();
-                repository(context).tryClaim(userId, "savepoint-stale", input()).orElseThrow();
+                repository(context)
+                    .tryClaim(userId, "savepoint-stale", input(jdbc, gameId))
+                    .orElseThrow();
 
                 repository(context)
                     .completeClaim(stale, gameId, Instant.parse("2026-11-21T00:30:00Z"));
@@ -716,8 +726,11 @@ class PublicationRecordPostgresTest {
               inTransaction(
                   context,
                   ignored -> {
-                    var claim = repository(context).tryClaim(user, invalid, input()).orElseThrow();
                     ids[1] = game(jdbc, user);
+                    var claim =
+                        repository(context)
+                            .tryClaim(user, invalid, input(jdbc, ids[1]))
+                            .orElseThrow();
                     ids[0] =
                         jdbc.sql("select room_id from games where id = ?")
                             .param(ids[1])
@@ -846,6 +859,24 @@ class PublicationRecordPostgresTest {
         .param("roomId", roomId)
         .param("questionId", questionId)
         .query(Long.class)
+        .single();
+  }
+
+  private static PublicationInput input(JdbcClient jdbc, long gameId) {
+    return jdbc.sql(
+            """
+            select r.selected_reward_preset_id, g.question_preset_id
+            from games g join rooms r on r.id = g.room_id where g.id = ?
+            """)
+        .param(gameId)
+        .query((row, rowNum) ->
+            new PublicationInput(
+                Kind.NK_CREATE,
+                null,
+                row.getLong(1),
+                row.getLong(2),
+                input().choiceIds(),
+                input().correctChoiceId()))
         .single();
   }
 

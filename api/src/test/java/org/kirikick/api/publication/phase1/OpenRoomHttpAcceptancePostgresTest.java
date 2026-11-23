@@ -465,6 +465,7 @@ class OpenRoomHttpAcceptancePostgresTest {
     NkCreateHttpFixture.Fixture fixture = fixture().fixture();
     String key = "8aa20f38-0a6f-4b9d-97e5-45b5250c3e1d";
     PublicationIdempotencyRepository target = AopTestUtils.getTargetObject(records);
+    AtomicBoolean completionGuardFailed = new AtomicBoolean();
     willAnswer(
             invocation -> {
               int changed =
@@ -476,7 +477,14 @@ class OpenRoomHttpAcceptancePostgresTest {
                       .param("key", key)
                       .update();
               assertThat(changed).isEqualTo(1);
-              return invocation.callRealMethod();
+              try {
+                return invocation.callRealMethod();
+              } catch (DomainException failure) {
+                assertThat(failure.getErrorCode())
+                    .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
+                completionGuardFailed.set(true);
+                throw failure;
+              }
             })
         .given(target)
         .completeClaim(any(), anyLong(), any());
@@ -489,6 +497,7 @@ class OpenRoomHttpAcceptancePostgresTest {
                 fixture.choiceIds(),
                 fixture.choiceIds().getFirst(),
                 fixture.rewardId());
+    assertThat(completionGuardFailed).isTrue();
     assertThat(response.statusCode()).isEqualTo(500);
     assertThat(json.readTree(response.body()).required("code").textValue())
         .isEqualTo("INTERNAL_ERROR");
@@ -788,7 +797,11 @@ class OpenRoomHttpAcceptancePostgresTest {
       if (completed && insertedChoices == 4) {
         choicesFlushed = true;
       }
-      if (!publicationFlushed && game != null && game.getRoom().getStatus() == Room.Status.OPEN) {
+      Room room = game == null ? null : game.getRoom();
+      if (!publicationFlushed
+          && room != null
+          && room.getOpenedAt() != null
+          && room.getClosesAt() != null) {
         publicationFlushed = completed;
         reach(completed ? "PUBLISH_AFTER_FLUSH" : "PUBLISH_BEFORE_FLUSH");
       }

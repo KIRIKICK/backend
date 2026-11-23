@@ -77,14 +77,15 @@ public class OpenRoomService {
     }
     Claim claim = (Claim) reservation;
     users.lockById(userId).orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    rooms.findStoredOpenRoomIdByHostUserId(userId).ifPresent(this::reconcileOpenRoom);
     User user =
         users
             .findById(userId)
             .orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
+    entityManager.refresh(user);
     if (user.getStatus() != UserStatus.ACTIVE) {
       throw new DomainException(AuthErrorCode.ACCOUNT_INACTIVE);
     }
+    rooms.findStoredOpenRoomIdByHostUserId(userId).ifPresent(this::reconcileOpenRoom);
     QuestionPreset question =
         questions
             .findById(input.questionPresetId())
@@ -96,11 +97,10 @@ public class OpenRoomService {
     List<QuestionPresetChoice> sources =
         questionChoices.findAllByQuestionPreset_IdAndIdInOrderByIdAsc(
             question.getId(), input.choiceIds());
-    if (questionChoices.countByIdIn(input.choiceIds()) != 4) {
-      throw new DomainException(PublicationErrorCode.PRESET_NOT_FOUND);
-    }
-    if (sources.size() != 4
-        || !sources.stream().map(QuestionPresetChoice::getId).toList().equals(input.choiceIds())) {
+    if (!sources.stream().map(QuestionPresetChoice::getId).toList().equals(input.choiceIds())) {
+      if (questionChoices.countByIdIn(input.choiceIds()) != 4) {
+        throw new DomainException(PublicationErrorCode.PRESET_NOT_FOUND);
+      }
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
     }
     Room room = rooms.saveAndFlush(Room.prepare(user, reward));

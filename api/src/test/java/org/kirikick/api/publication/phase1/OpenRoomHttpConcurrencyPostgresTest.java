@@ -3,6 +3,7 @@ package org.kirikick.api.publication.phase1;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -10,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,8 +19,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +30,7 @@ import org.kirikick.api.auth.domain.OAuthIdentity;
 import org.kirikick.api.auth.domain.SignupApplication;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.support.AuthTestSettings;
+import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.game.domain.Choice;
 import org.kirikick.api.game.domain.Game;
 import org.kirikick.api.question.domain.QuestionPreset;
@@ -40,7 +45,9 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -51,7 +58,10 @@ import org.springframework.test.context.DynamicPropertySource;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Import(OpenRoomHttpConcurrencyPostgresTest.DomainEntities.class)
+@Import({
+  OpenRoomHttpConcurrencyPostgresTest.DomainEntities.class,
+  OpenRoomHttpConcurrencyPostgresTest.FixedClockConfig.class
+})
 class OpenRoomHttpConcurrencyPostgresTest {
   private static final long CLAIM_GATE = 775_075L;
 
@@ -61,6 +71,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
   @Autowired private DataSource dataSource;
   @Autowired private UserRepository users;
   @Autowired private LoginSessionService logins;
+  @Autowired private FixedDbTimeSource clock;
 
   @DynamicPropertySource
   static void infrastructure(DynamicPropertyRegistry registry) {
@@ -78,6 +89,11 @@ class OpenRoomHttpConcurrencyPostgresTest {
   @BeforeEach
   void requirePostgres() {
     assertThat(jdbc.sql("select version()").query(String.class).single()).contains("PostgreSQL 17");
+  }
+
+  @AfterEach
+  void clearClock() {
+    clock.clear();
   }
 
   @Test
@@ -107,7 +123,8 @@ class OpenRoomHttpConcurrencyPostgresTest {
                       fixture.choiceIds().getFirst(),
                       fixture.rewardId())
                   .statusCode());
-      WaitEvidence secondWait = awaitGateWait(gate.holderPid(), sameInputSecond);
+      WaitEvidence secondWait =
+          awaitGateWait(gate.holderPid(), firstWait.waiterPid(), sameInputSecond);
       gate.release();
 
       assertThat(
@@ -148,7 +165,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
                       fixture.choiceIds().getFirst(),
                       fixture.alternateRewardId())
                   .statusCode());
-      WaitEvidence secondWait = awaitGateWait(gate.holderPid(), second);
+      WaitEvidence secondWait = awaitGateWait(gate.holderPid(), firstWait.waiterPid(), second);
       gate.release();
 
       assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
@@ -186,7 +203,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
                       fixture.choiceIds().getFirst(),
                       fixture.alternateRewardId())
                   .statusCode());
-      WaitEvidence secondWait = awaitGateWait(gate.holderPid(), second);
+      WaitEvidence secondWait = awaitGateWait(gate.holderPid(), firstWait.waiterPid(), second);
       gate.release();
 
       assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
@@ -242,11 +259,53 @@ class OpenRoomHttpConcurrencyPostgresTest {
   }
 
   @Test
+  @DisplayName("C-04a: User 잠금 대기 중 정지된 계정은 새 공개를 만들지 않는다")
+  void rejectsUserSuspendedWhileWaitingForActualUserLock() throws Exception {
+    NkCreateHttpFixture.Fixture fixture = fixture().fixture();
+    long existingRoomId =
+        insertRoom(
+            fixture,
+            "CLOSED",
+            Instant.parse("2039-01-01T00:00:00Z"),
+            Instant.parse("2039-01-02T00:00:00Z"));
+    try (Connection holder = lockUser(fixture.user().getId());
+        ExecutorService workers = Executors.newSingleThreadExecutor()) {
+      int holderPid = backendPid(holder);
+      Future<HttpResponse<String>> pending =
+          workers.submit(() ->
+              fixture()
+                  .post(
+                      fixture,
+                      key(13),
+                      fixture.choiceIds(),
+                      fixture.choiceIds().getFirst(),
+                      fixture.rewardId()));
+      WaitEvidence wait = awaitWaitFor(holderPid, pending);
+      try (Statement statement = holder.createStatement()) {
+        statement.execute(
+            "update users set status = 'SUSPENDED' where id = " + fixture.user().getId());
+      }
+      holder.commit();
+      recordReleaseEvidence(holderPid, "COMMIT");
+      HttpResponse<String> response = pending.get(15, TimeUnit.SECONDS);
+      assertThat(response.statusCode()).isEqualTo(403);
+      assertThat(json.readTree(response.body()).required("code").textValue())
+          .isEqualTo("ACCOUNT_INACTIVE");
+      assertThat(wait.waitEventType()).isEqualTo("Lock");
+      assertThat(wait.blockerPids()).contains(Integer.toString(holderPid));
+      assertPublicationCounts(fixture.user().getId(), 1, 0, 0, 0);
+      assertThat(roomStatus(existingRoomId)).isEqualTo("CLOSED");
+      recordFinalState("C04a-suspended", fixture.user().getId());
+    }
+  }
+
+  @Test
   @DisplayName("C-05/C-06: 실제 Room 잠금 대기 뒤 DB 마감과 holder commit 또는 rollback을 다시 판정한다")
   void rechecksRoomStateAfterActualRoomLockWait() throws Exception {
     NkCreateHttpFixture.Fixture fixture = fixture().fixture();
-    long roomId =
-        insertRoom(fixture, "OPEN", "now() - interval '24 hours'", "now() + interval '5 seconds'");
+    Instant closesAt = Instant.parse("2040-01-01T00:00:00Z");
+    clock.set(closesAt.minusNanos(1_000));
+    long roomId = insertRoom(fixture, "OPEN", closesAt.minus(Duration.ofHours(24)), closesAt);
     try (Connection holder = lockRoom(roomId);
         ExecutorService workers = Executors.newSingleThreadExecutor()) {
       int holderPid = backendPid(holder);
@@ -261,12 +320,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
                       fixture.rewardId())
                   .statusCode());
       WaitEvidence wait = awaitWaitFor(holderPid, pending);
-      Instant closesAt =
-          jdbc.sql("select closes_at from rooms where id = :roomId")
-              .param("roomId", roomId)
-              .query(Instant.class)
-              .single();
-      awaitDbDeadline(closesAt, pending);
+      clock.set(closesAt);
       holder.commit();
       recordReleaseEvidence(holderPid, "COMMIT");
       assertThat(pending.get(15, TimeUnit.SECONDS)).isEqualTo(201);
@@ -275,7 +329,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
       assertThat(roomStatus(roomId)).isEqualTo("CLOSED");
       recordFinalState("C05", fixture.user().getId());
     }
-
+    clock.clear();
     NkCreateHttpFixture.Fixture committedFixture = fixture().fixture();
     long committedRoomId =
         insertRoom(
@@ -391,7 +445,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
                       fixture.choiceIds().getFirst(),
                       fixture.rewardId())
                   .statusCode());
-      WaitEvidence newKeyWait = awaitWaitFor(holderPid, newKey);
+      WaitEvidence newKeyWait = awaitWaitFor(holderPid, replacementWait.waiterPid(), newKey);
       holder.commit();
       recordReleaseEvidence(holderPid, "COMMIT");
       int replacementStatus = replacement.get(15, TimeUnit.SECONDS);
@@ -464,7 +518,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
                       fixture.choiceIds().getFirst(),
                       fixture.alternateRewardId())
                   .statusCode());
-      WaitEvidence secondWait = awaitWaitFor(firstWait.waiterPid(), second);
+      WaitEvidence secondWait = awaitWaitFor(firstWait.waiterPid(), firstWait.waiterPid(), second);
       gate.release();
       assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
           .containsExactlyInAnyOrder(201, 200);
@@ -542,7 +596,15 @@ class OpenRoomHttpConcurrencyPostgresTest {
     return awaitWaitFor(holderPid, pending);
   }
 
+  private WaitEvidence awaitGateWait(int holderPid, int excludedWaiterPid, Future<?> pending) {
+    return awaitWaitFor(holderPid, excludedWaiterPid, pending);
+  }
+
   private WaitEvidence awaitWaitFor(int holderPid, Future<?> pending) {
+    return awaitWaitFor(holderPid, -1, pending);
+  }
+
+  private WaitEvidence awaitWaitFor(int holderPid, int excludedWaiterPid, Future<?> pending) {
     long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
     while (System.nanoTime() < deadline) {
       WaitEvidence evidence =
@@ -552,10 +614,13 @@ class OpenRoomHttpConcurrencyPostgresTest {
                          coalesce(wait_event_type, ''), coalesce(wait_event, ''),
                          coalesce(backend_xid::text, ''), coalesce(query, '')
                   from pg_stat_activity
-                  where pid <> pg_backend_pid() and :holderPid = any(pg_blocking_pids(pid))
+                  where pid <> pg_backend_pid()
+                    and :holderPid = any(pg_blocking_pids(pid))
+                    and pid <> :excludedWaiterPid
                   order by query_start desc limit 1
                   """)
               .param("holderPid", holderPid)
+              .param("excludedWaiterPid", excludedWaiterPid)
               .query((row, rowNum) ->
                   new WaitEvidence(
                       row.getInt(1),
@@ -572,7 +637,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
       }
       if (pending.isDone()) {
         throw new AssertionError(
-            "HTTP request completed before the PostgreSQL claim-gate wait was observed");
+            "HTTP request completed before PostgreSQL claim-gate wait was observed");
       }
       LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
     }
@@ -747,20 +812,20 @@ class OpenRoomHttpConcurrencyPostgresTest {
     }
   }
 
-  private void awaitDbDeadline(Instant closesAt, Future<?> pending) {
-    long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-    while (System.nanoTime() < deadline) {
-      Instant now = jdbc.sql("select clock_timestamp()").query(Instant.class).single();
-      if (!now.isBefore(closesAt)) {
-        return;
-      }
-      if (pending.isDone()) {
-        throw new AssertionError("HTTP request completed before the Room close deadline passed");
-      }
-      LockSupport.parkNanos(Duration.ofMillis(20).toNanos());
-    }
-    throw new AssertionError(
-        "database close deadline did not pass while HTTP request waited on Room lock");
+  private long insertRoom(
+      NkCreateHttpFixture.Fixture fixture, String status, Instant openedAt, Instant closesAt) {
+    return jdbc.sql(
+            """
+            insert into rooms(host_user_id, selected_reward_preset_id, status, result_state, opened_at, closes_at, created_at)
+            values (:userId, :rewardId, :status, 'NOT_READY', :openedAt, :closesAt, now()) returning id
+            """)
+        .param("userId", fixture.user().getId())
+        .param("rewardId", fixture.rewardId())
+        .param("status", status)
+        .param("openedAt", openedAt.atOffset(ZoneOffset.UTC))
+        .param("closesAt", closesAt.atOffset(ZoneOffset.UTC))
+        .query(Long.class)
+        .single();
   }
 
   private long insertRoom(
@@ -802,6 +867,7 @@ class OpenRoomHttpConcurrencyPostgresTest {
   }
 
   private static void assertWaits(WaitEvidence first, WaitEvidence second, int holderPid) {
+    assertThat(first.waiterPid()).isNotEqualTo(second.waiterPid());
     assertThat(first.blockerPids()).contains(Integer.toString(holderPid));
     assertThat(second.blockerPids()).contains(Integer.toString(holderPid));
     assertThat(first.waitEventType()).isEqualTo("Lock");
@@ -903,6 +969,37 @@ class OpenRoomHttpConcurrencyPostgresTest {
         jdbc.sql("drop trigger if exists " + triggerName + " on publication_idempotency").update();
         jdbc.sql("drop function if exists " + functionName + "()").update();
       }
+    }
+  }
+
+  @TestConfiguration(proxyBeanMethods = false)
+  static class FixedClockConfig {
+    @Bean
+    @Primary
+    FixedDbTimeSource fixedDbTimeSource(JdbcClient jdbc) {
+      return new FixedDbTimeSource(jdbc);
+    }
+  }
+
+  static final class FixedDbTimeSource extends DbTimeSource {
+    private final AtomicReference<Instant> current = new AtomicReference<>();
+
+    FixedDbTimeSource(JdbcClient jdbc) {
+      super(jdbc);
+    }
+
+    @Override
+    public Instant readCurrentTime() {
+      Instant fixed = current.get();
+      return fixed == null ? super.readCurrentTime() : fixed;
+    }
+
+    void set(Instant instant) {
+      current.set(instant);
+    }
+
+    void clear() {
+      current.set(null);
     }
   }
 

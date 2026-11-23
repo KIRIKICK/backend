@@ -78,12 +78,16 @@ public class PublicationIdempotencyRepository {
             select r.id as room_id, g.id as game_id, r.opened_at, r.closes_at
             from games g join rooms r on r.id = g.room_id
             where g.id = :gameId and r.host_user_id = :userId
+              and g.question_preset_id = :questionPresetId
+              and r.selected_reward_preset_id = :rewardPresetId
               and isfinite(r.opened_at) and isfinite(r.closes_at)
               and (select count(*) from choices c where c.game_id = g.id) = 4
               and exists (select 1 from choices c where c.game_id = g.id and c.id = g.correct_choice_id)
             """)
         .param("gameId", locked.gameId())
         .param("userId", locked.userId())
+        .param("questionPresetId", locked.normalizedInput().questionPresetId())
+        .param("rewardPresetId", locked.normalizedInput().rewardPresetId())
         .query((row, rowNum) ->
             new Replay(
                 row.getLong("room_id"),
@@ -174,6 +178,7 @@ public class PublicationIdempotencyRepository {
     if (recordExpiresAt == null) {
       throw new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
     }
+    verifyPublishedGameMatchesInput(claim.userId, gameId, claim.input);
     List<Boolean> completed =
         jdbc.sql(
                 """
@@ -201,6 +206,31 @@ public class PublicationIdempotencyRepository {
             .list();
     if (!completed.equals(List.of(true))) {
       throw new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
+    }
+  }
+
+  private void verifyPublishedGameMatchesInput(long userId, long gameId, PublicationInput input) {
+    boolean matches =
+        jdbc.sql(
+                """
+                select exists(
+                    select 1
+                    from games g
+                    join rooms r on r.id = g.room_id
+                    where g.id = :gameId
+                      and r.host_user_id = :userId
+                      and g.question_preset_id = :questionPresetId
+                      and r.selected_reward_preset_id = :rewardPresetId
+                )
+                """)
+            .param("gameId", gameId)
+            .param("userId", userId)
+            .param("questionPresetId", input.questionPresetId())
+            .param("rewardPresetId", input.rewardPresetId())
+            .query(Boolean.class)
+            .single();
+    if (!matches) {
+      throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
     }
   }
 

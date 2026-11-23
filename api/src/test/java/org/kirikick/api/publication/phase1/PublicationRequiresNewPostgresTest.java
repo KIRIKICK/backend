@@ -101,10 +101,15 @@ class PublicationRequiresNewPostgresTest {
                   List<Event> innerTransaction =
                       inner.stream().filter(event -> event.xid() != null).toList();
                   assertThat(innerTransaction).isNotEmpty();
+                  int innerPid = innerTransaction.getFirst().pid();
+                  String innerXid = innerTransaction.getFirst().xid();
+                  assertThat(inner).isNotEmpty();
+                  assertThat(inner)
+                      .allSatisfy(event -> assertThat(event.pid()).isEqualTo(innerPid));
                   assertThat(innerTransaction)
                       .allSatisfy(event -> {
-                        assertThat(event.pid()).isEqualTo(innerTransaction.getFirst().pid());
-                        assertThat(event.xid()).isEqualTo(innerTransaction.getFirst().xid());
+                        assertThat(event.pid()).isEqualTo(innerPid);
+                        assertThat(event.xid()).isEqualTo(innerXid);
                       });
                   assertThat(innerTransaction)
                       .extracting(Event::sql)
@@ -113,8 +118,8 @@ class PublicationRequiresNewPostgresTest {
                       .extracting(Event::sql)
                       .anyMatch(sql -> sql.contains("select clock_timestamp()"));
                   assertThat(innerTransaction).extracting(Event::commit).contains(true);
-                  assertThat(innerTransaction.getFirst().pid()).isNotEqualTo(outerBefore.pid());
-                  assertThat(innerTransaction.getFirst().xid()).isNotEqualTo(outerBefore.xid());
+                  assertThat(innerPid).isNotEqualTo(outerBefore.pid());
+                  assertThat(innerXid).isNotEqualTo(outerBefore.xid());
                   System.out.printf(
                       "REQUIRES_NEW_DS_EVIDENCE outerBefore=%s outerAfter=%s inner=%s%n",
                       outerBefore, outerAfter, inner);
