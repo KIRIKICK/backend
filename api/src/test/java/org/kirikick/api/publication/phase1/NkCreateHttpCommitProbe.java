@@ -81,15 +81,25 @@ final class NkCreateHttpCommitProbe {
    */
   static PoolBorrow borrowPool(DataSource dataSource) throws SQLException {
     HikariDataSource pool = unwrapPool(dataSource);
+    int maximumPoolSize = pool.getMaximumPoolSize();
     List<Connection> borrowed = new ArrayList<>();
     try {
-      for (int i = 0; i < pool.getMaximumPoolSize(); i++) {
+      for (int i = 0; i < maximumPoolSize; i++) {
         borrowed.add(dataSource.getConnection());
       }
-      return new PoolBorrow(borrowed);
-    } catch (SQLException exception) {
-      for (Connection connection : borrowed) {
-        connection.close();
+      Case testCase = active();
+      PoolBorrow result = new PoolBorrow(borrowed, testCase);
+      if (testCase != null) {
+        testCase.poolMaximumSize = maximumPoolSize;
+        testCase.poolBorrowedConnections = borrowed.size();
+        testCase.event("POOL_EXHAUSTION_READY");
+      }
+      return result;
+    } catch (SQLException | RuntimeException exception) {
+      try {
+        new PoolBorrow(borrowed, null).close();
+      } catch (SQLException cleanupFailure) {
+        exception.addSuppressed(cleanupFailure);
       }
       throw exception;
     }
@@ -139,6 +149,7 @@ final class NkCreateHttpCommitProbe {
       return;
     }
     testCase.outerFailure = failure;
+    testCase.event("PRODUCT_OBSERVE_THROW");
     if (failure instanceof PublicationCommitObserver.OutcomeUnknownException unknown) {
       testCase.observerSnapshot = unknown.snapshot();
     }
@@ -254,6 +265,10 @@ final class NkCreateHttpCommitProbe {
     private volatile boolean jpaTransactionManagerCommitEntered;
     private volatile Runnable beforeCommitAction;
     private volatile Throwable outerFailure;
+    private volatile boolean productObservationActive;
+    private volatile int poolMaximumSize;
+    private volatile int poolBorrowedConnections;
+    private volatile SQLException connectionAcquisitionFailure;
     private volatile PublicationCommitObserver.Snapshot observerSnapshot;
     private volatile boolean failResponseWrite;
     private volatile boolean responseWriteFailed;
@@ -312,6 +327,28 @@ final class NkCreateHttpCommitProbe {
 
     Throwable outerFailure() {
       return outerFailure;
+    }
+
+    int poolMaximumSize() {
+      return poolMaximumSize;
+    }
+
+    int poolBorrowedConnections() {
+      return poolBorrowedConnections;
+    }
+
+    SQLException connectionAcquisitionFailure() {
+      return connectionAcquisitionFailure;
+    }
+
+    void productObservationStarted() {
+      productObservationActive = true;
+      event("PRODUCT_OBSERVE_ENTER");
+    }
+
+    void productObservationFinished() {
+      productObservationActive = false;
+      event("PRODUCT_OBSERVE_EXIT");
     }
 
     PublicationCommitObserver.Snapshot observerSnapshot() {
@@ -404,12 +441,44 @@ final class NkCreateHttpCommitProbe {
 
     @Override
     public Connection getConnection() throws SQLException {
-      return observe(super.getConnection());
+      Case testCase = acquiringConnection();
+      Connection connection;
+      try {
+        connection = super.getConnection();
+      } catch (SQLException failure) {
+        acquisitionFailed(testCase, failure);
+        throw failure;
+      }
+      return observe(connection);
     }
 
     @Override
     public Connection getConnection(String username, String password) throws SQLException {
-      return observe(super.getConnection(username, password));
+      Case testCase = acquiringConnection();
+      Connection connection;
+      try {
+        connection = super.getConnection(username, password);
+      } catch (SQLException failure) {
+        acquisitionFailed(testCase, failure);
+        throw failure;
+      }
+      return observe(connection);
+    }
+
+    private static Case acquiringConnection() {
+      Case testCase = active();
+      if (testCase == null || !testCase.productObservationActive) {
+        return null;
+      }
+      testCase.event("CONNECTION_ACQUISITION_ENTER");
+      return testCase;
+    }
+
+    private static void acquisitionFailed(Case testCase, SQLException failure) {
+      if (testCase != null) {
+        testCase.connectionAcquisitionFailure = failure;
+        testCase.event("CONNECTION_ACQUISITION_THROW");
+      }
     }
 
     private static Connection observe(Connection target) {
@@ -501,9 +570,11 @@ final class NkCreateHttpCommitProbe {
 
   static final class PoolBorrow implements AutoCloseable {
     private final List<Connection> connections;
+    private final Case testCase;
 
-    private PoolBorrow(List<Connection> connections) {
+    private PoolBorrow(List<Connection> connections, Case testCase) {
       this.connections = List.copyOf(connections);
+      this.testCase = testCase;
     }
 
     @Override
@@ -517,6 +588,9 @@ final class NkCreateHttpCommitProbe {
         }
       }
       if (failure != null) throw failure;
+      if (testCase != null) {
+        testCase.event("POOL_CONNECTIONS_RELEASED");
+      }
     }
   }
 

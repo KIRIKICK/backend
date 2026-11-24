@@ -18,6 +18,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -30,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.IntConsumer;
 import javax.sql.DataSource;
+import org.hibernate.exception.JDBCConnectionException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +56,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.AopTestUtils;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /** Draft only until it is moved to src/test after the application topology gate is established. */
@@ -144,10 +147,19 @@ class OpenRoomHttpCommitPostgresTest {
                   testCase != null && "F04".equals(testCase.id())
                       ? NkCreateHttpCommitProbe.borrowPool(dataSource)
                       : null) {
-                return invocation.callRealMethod();
-              } catch (Throwable failure) {
-                NkCreateHttpCommitProbe.observerFailure(failure);
-                throw failure;
+                if (testCase != null) {
+                  testCase.productObservationStarted();
+                }
+                try {
+                  return invocation.callRealMethod();
+                } catch (Throwable failure) {
+                  NkCreateHttpCommitProbe.observerFailure(failure);
+                  throw failure;
+                } finally {
+                  if (testCase != null) {
+                    testCase.productObservationFinished();
+                  }
+                }
               }
             })
         .given(commitObserver)
@@ -350,7 +362,7 @@ class OpenRoomHttpCommitPostgresTest {
   }
 
   @Test
-  @DisplayName("F-04: publication transaction pool acquisition failure is a generic internal error")
+  @DisplayName("F-04: 풀 전체 점유 후 제품 트랜잭션의 연결 획득 타임아웃은 일반 내부 오류다")
   void returnsInternalErrorForPublicationPoolAcquisitionFailure() throws Exception {
     NkCreateHttpFixture.Fixture fixture = fixture();
     String key = UUID.randomUUID().toString();
@@ -360,6 +372,24 @@ class OpenRoomHttpCommitPostgresTest {
     recordEvidence("F04", key, fixture, initial, WIRE.events(), response);
     assertAbortedDatabase(key, fixture, initial);
     assertError(response, 500, "INTERNAL_ERROR");
+    assertThat(initial.events())
+        .extracting(NkCreateHttpCommitProbe.ProbeEvent::event)
+        .containsSubsequence(
+            "POOL_EXHAUSTION_READY",
+            "PRODUCT_OBSERVE_ENTER",
+            "CONNECTION_ACQUISITION_ENTER",
+            "CONNECTION_ACQUISITION_THROW",
+            "PRODUCT_OBSERVE_THROW",
+            "PRODUCT_OBSERVE_EXIT",
+            "POOL_CONNECTIONS_RELEASED");
+    assertThat(initial.poolMaximumSize()).isPositive();
+    assertThat(initial.poolBorrowedConnections()).isEqualTo(initial.poolMaximumSize());
+    assertThat(initial.outerFailure())
+        .isInstanceOf(CannotCreateTransactionException.class)
+        .hasCauseInstanceOf(JDBCConnectionException.class);
+    assertThat((Throwable) initial.connectionAcquisitionFailure())
+        .isInstanceOf(SQLTransientConnectionException.class)
+        .isSameAs(((JDBCConnectionException) initial.outerFailure().getCause()).getSQLException());
     assertThat(initial.commitEntered()).isFalse();
     assertThat(auditCount(key)).isZero();
   }
@@ -524,6 +554,13 @@ class OpenRoomHttpCommitPostgresTest {
         "commitFailureSqlState",
         testCase.commitFailure() == null ? null : testCase.commitFailure().getSQLState());
     probe.put("exceptionChain", testCase.exceptionChain());
+    probe.put("poolMaximumSize", testCase.poolMaximumSize());
+    probe.put("poolBorrowedConnections", testCase.poolBorrowedConnections());
+    probe.put(
+        "connectionAcquisitionFailureType",
+        testCase.connectionAcquisitionFailure() == null
+            ? null
+            : testCase.connectionAcquisitionFailure().getClass().getName());
     probe.put("observerSnapshot", testCase.observerSnapshot());
     probe.put("responseWriteFailed", testCase.responseWriteFailed());
     probe.put("events", testCase.events());
