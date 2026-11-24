@@ -298,7 +298,8 @@ final class NkCreateCommitWire implements AutoCloseable {
 
   private void replies(
       Socket client, Socket upstream, DataInputStream from, DataOutputStream to, Session session) {
-    try {
+    try (client;
+        upstream) {
       int type;
       while ((type = from.read()) != -1) {
         byte[] bytes = body(from);
@@ -348,8 +349,6 @@ final class NkCreateCommitWire implements AutoCloseable {
                 "target");
             armed = false;
             session.expectedClose = true;
-            client.close();
-            upstream.close();
             return;
           }
           event(
