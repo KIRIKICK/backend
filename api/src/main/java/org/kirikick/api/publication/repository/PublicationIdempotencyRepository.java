@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.kirikick.api.common.exception.DomainException;
+import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationIdempotencyRecord;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
@@ -39,6 +41,100 @@ public class PublicationIdempotencyRepository {
           .build();
 
   private final JdbcClient jdbc;
+  private final DbTimeSource clock;
+
+  /** Reserve or recover the first publication inside the caller's READ COMMITTED transaction. */
+  public Reservation reserveNkCreate(long userId, String requestKey, PublicationInput input) {
+    if (input.kind() != PublicationInput.Kind.NK_CREATE) {
+      throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_TARGET);
+    }
+    Optional<Claim> first = tryClaim(userId, requestKey, input);
+    if (first.isPresent()) {
+      return first.get();
+    }
+
+    // In READ COMMITTED, the conflict winner may not be visible in the INSERT snapshot.
+    PublicationIdempotencyRecord locked =
+        findForUpdate(userId, requestKey)
+            .orElseThrow(
+                () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
+    Replay original = restore(locked);
+    Instant cutoff = clock.readCurrentTime();
+    if (!cutoff.isBefore(locked.recordExpiresAt())) {
+      return replaceExpired(locked, input, cutoff);
+    }
+    if (!input.equals(locked.normalizedInput())) {
+      throw new DomainException(PublicationErrorCode.IDEMPOTENCY_KEY_CONFLICT);
+    }
+    return original;
+  }
+
+  private Replay restore(PublicationIdempotencyRecord locked) {
+    if (!locked.isComplete()) {
+      throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
+    }
+    return jdbc.sql(
+            """
+            select r.id as room_id, g.id as game_id, r.opened_at, r.closes_at
+            from games g join rooms r on r.id = g.room_id
+            where g.id = :gameId and r.host_user_id = :userId
+              and g.question_preset_id = :questionPresetId
+              and r.selected_reward_preset_id = :rewardPresetId
+              and isfinite(r.opened_at) and isfinite(r.closes_at)
+              and (select count(*) from choices c where c.game_id = g.id) = 4
+              and exists (select 1 from choices c where c.game_id = g.id and c.id = g.correct_choice_id)
+            """)
+        .param("gameId", locked.gameId())
+        .param("userId", locked.userId())
+        .param("questionPresetId", locked.normalizedInput().questionPresetId())
+        .param("rewardPresetId", locked.normalizedInput().rewardPresetId())
+        .query((row, rowNum) ->
+            new Replay(
+                row.getLong("room_id"),
+                row.getLong("game_id"),
+                row.getObject("opened_at", OffsetDateTime.class).toInstant(),
+                row.getObject("closes_at", OffsetDateTime.class).toInstant()))
+        .optional()
+        .filter(replay ->
+            Duration.between(replay.openedAt(), replay.closesAt()).equals(Duration.ofHours(24)))
+        .orElseThrow(() -> new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD));
+  }
+
+  private Claim replaceExpired(
+      PublicationIdempotencyRecord locked, PublicationInput input, Instant cutoff) {
+    return jdbc.sql(
+            """
+            update publication_idempotency
+               set claim_id = gen_random_uuid(), normalized_input = cast(:input as jsonb),
+                   game_id = null, record_expires_at = null
+             where user_id = :userId and request_key = :requestKey
+               and claim_id = :oldClaimId and game_id = :oldGameId
+               and record_expires_at = :oldExpiry and record_expires_at <= :cutoff
+            returning claim_id, pg_current_xact_id()::text as xid
+            """)
+        .param("input", writeInput(input))
+        .param("userId", locked.userId())
+        .param("requestKey", locked.requestKey())
+        .param("oldClaimId", locked.claimId())
+        .param("oldGameId", locked.gameId())
+        .param("oldExpiry", locked.recordExpiresAt().atOffset(UTC))
+        .param("cutoff", cutoff.atOffset(UTC))
+        .query((row, rowNum) ->
+            new Claim(
+                locked.userId(),
+                locked.requestKey(),
+                input,
+                row.getString("xid"),
+                row.getObject("claim_id", UUID.class)))
+        .optional()
+        .orElseThrow(
+            () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
+  }
+
+  public sealed interface Reservation permits Claim, Replay {}
+
+  public record Replay(long roomId, long gameId, Instant openedAt, Instant closesAt)
+      implements Reservation {}
 
   public Optional<Claim> tryClaim(long userId, String requestKey, PublicationInput input) {
     validateRequestKey(requestKey);
@@ -66,7 +162,7 @@ public class PublicationIdempotencyRepository {
     validateRequestKey(requestKey);
     return jdbc.sql(
             """
-            select user_id, request_key, normalized_input, game_id, record_expires_at,
+            select user_id, request_key, normalized_input, game_id, record_expires_at, claim_id,
                    isfinite(record_expires_at) as finite_expiry
             from publication_idempotency
             where user_id = :userId and request_key = :requestKey
@@ -82,6 +178,7 @@ public class PublicationIdempotencyRepository {
     if (recordExpiresAt == null) {
       throw new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
     }
+    verifyPublishedGameMatchesInput(claim.userId, gameId, claim.input);
     List<Boolean> completed =
         jdbc.sql(
                 """
@@ -109,6 +206,31 @@ public class PublicationIdempotencyRepository {
             .list();
     if (!completed.equals(List.of(true))) {
       throw new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
+    }
+  }
+
+  private void verifyPublishedGameMatchesInput(long userId, long gameId, PublicationInput input) {
+    boolean matches =
+        jdbc.sql(
+                """
+                select exists(
+                    select 1
+                    from games g
+                    join rooms r on r.id = g.room_id
+                    where g.id = :gameId
+                      and r.host_user_id = :userId
+                      and g.question_preset_id = :questionPresetId
+                      and r.selected_reward_preset_id = :rewardPresetId
+                )
+                """)
+            .param("gameId", gameId)
+            .param("userId", userId)
+            .param("questionPresetId", input.questionPresetId())
+            .param("rewardPresetId", input.rewardPresetId())
+            .query(Boolean.class)
+            .single();
+    if (!matches) {
+      throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
     }
   }
 
@@ -143,7 +265,8 @@ public class PublicationIdempotencyRepository {
         row.getString("request_key"),
         input,
         gameId,
-        expiry == null ? null : expiry.toInstant());
+        expiry == null ? null : expiry.toInstant(),
+        row.getObject("claim_id", UUID.class));
   }
 
   private static String writeInput(PublicationInput input) {
@@ -155,9 +278,9 @@ public class PublicationIdempotencyRepository {
     }
   }
 
-  // Only a successful INSERT can issue a claim, and only its transaction can complete it.
+  // Only the transaction that reserved this generation can complete its claim.
   @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-  public static final class Claim {
+  public static final class Claim implements Reservation {
 
     private final long userId;
     private final String requestKey;

@@ -30,12 +30,27 @@ class ProductArtifactIsolationTest {
                 "game/domain/exception/GameErrorCode.class",
                 "game/repository/ChoiceRepository.class",
                 "game/repository/GameRepository.class",
+                "publication/controller/OpenRoomController.class",
+                "publication/controller/OpenRoomExceptionHandler.class",
+                "publication/controller/OpenRoomExceptionHandler$1.class",
+                "publication/controller/dto/NkCreateRequest.class",
+                "publication/controller/dto/NkCreateResponse.class",
                 "publication/domain/PublicationIdempotencyRecord.class",
                 "publication/domain/PublicationInput.class",
                 "publication/domain/PublicationInput$Kind.class",
                 "publication/domain/exception/PublicationErrorCode.class",
+                "publication/infra/PublicationCommitObserver.class",
+                "publication/infra/PublicationCommitObserver$BackendError.class",
+                "publication/infra/PublicationCommitObserver$OutcomeUnknownException.class",
+                "publication/infra/PublicationCommitObserver$Scope.class",
+                "publication/infra/PublicationCommitObserver$Snapshot.class",
+                "publication/infra/PublicationDataSource.class",
                 "publication/repository/PublicationIdempotencyRepository.class",
                 "publication/repository/PublicationIdempotencyRepository$Claim.class",
+                "publication/repository/PublicationIdempotencyRepository$Replay.class",
+                "publication/repository/PublicationIdempotencyRepository$Reservation.class",
+                "publication/service/OpenRoomService.class",
+                "publication/service/OpenRoomService$Result.class",
                 "question/domain/QQuestionPreset.class",
                 "question/domain/QQuestionPresetChoice.class",
                 "question/domain/QuestionPreset.class",
@@ -69,7 +84,7 @@ class ProductArtifactIsolationTest {
   }
 
   @Test
-  @DisplayName("기본 Flyway 위치에는 제품 V1~V4만 있고 스파이크 마이그레이션은 없다")
+  @DisplayName("기본 Flyway 위치에는 제품 V1~V6만 있고 스파이크 마이그레이션은 없다")
   void defaultMigrationLocationContainsOnlyProductMigrations() throws Exception {
     var locations = ApiApplication.class.getClassLoader().getResources("db/migration");
     assertThat(locations.hasMoreElements()).isTrue();
@@ -81,7 +96,8 @@ class ProductArtifactIsolationTest {
                 "V2__create_signup_applications.sql",
                 "V3__create_question_room_game_core.sql",
                 "V4__create_publication_idempotency.sql",
-                "V5__add_publication_claim_identity.sql");
+                "V5__add_publication_claim_identity.sql",
+                "V6__seed_mvp_presets.sql");
       }
     }
   }

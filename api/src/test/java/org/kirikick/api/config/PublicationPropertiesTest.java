@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class PublicationPropertiesTest {
@@ -76,7 +78,11 @@ class PublicationPropertiesTest {
   private static ApplicationContextRunner runner(String... properties) {
     return new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(ValidationAutoConfiguration.class))
-        .withUserConfiguration(PublicationConfiguration.class)
+        .withUserConfiguration(GraceBindingConfig.class)
         .withPropertyValues(properties);
   }
+
+  @TestConfiguration(proxyBeanMethods = false)
+  @EnableConfigurationProperties(PublicationProperties.class)
+  static class GraceBindingConfig {}
 }

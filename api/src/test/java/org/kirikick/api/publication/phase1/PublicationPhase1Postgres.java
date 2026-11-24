@@ -16,7 +16,7 @@ import org.hibernate.Version;
 import org.kirikick.api.auth.domain.SignupApplication;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.config.JpaAuditingConfig;
-import org.kirikick.api.config.PublicationConfiguration;
+import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.game.domain.Game;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
@@ -32,6 +32,7 @@ import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -254,11 +255,7 @@ final class PublicationPhase1Postgres implements AutoCloseable {
         GameRepository.class
       })
   @EnableTransactionManagement
-  @Import({
-    JpaAuditingConfig.class,
-    PublicationConfiguration.class,
-    PublicationIdempotencyRepository.class,
-    DbTimeSource.class
-  })
+  @EnableConfigurationProperties(PublicationProperties.class)
+  @Import({JpaAuditingConfig.class, PublicationIdempotencyRepository.class, DbTimeSource.class})
   static class PersistenceConfig {}
 }

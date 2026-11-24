@@ -31,6 +31,17 @@ CD는 다음을 변경하지 않습니다.
 
 초기 설정은 배포 workflow가 생성하거나 수정하지 않습니다. 설정한 뒤 첫 배포 전에는 기존 서비스와 Artifact Registry 저장소가 존재하는지 확인합니다.
 
+### 출제 API 활성화
+
+`POST /games`는 `publication.grace`가 유효하게 설정된 경우에만 등록됩니다. 설정이 없으면 API가 등록되지 않고, 빈 값이나 잘못된 값을 명시하면 앱 기동이 실패합니다. 비활성화하려면 값을 비우지 말고 설정 자체를 제거합니다.
+
+| 실행 환경 | 설정 위치 |
+| --- | --- |
+| 로컬 `local`·`dev` 프로필 | `backend/.env`에 `publication.grace=PT5M` 형식으로 설정하거나, 앱 프로세스에 `PUBLICATION_GRACE` 환경 변수를 전달합니다. |
+| DEV Cloud Run | 대상 Cloud Run 서비스의 컨테이너 환경 변수에 `PUBLICATION_GRACE`를 설정합니다. GitHub Actions 변수에 추가해도 서비스에 주입되지 않으며, 현재 CD는 서비스 환경 변수를 설정하거나 변경하지 않습니다. |
+
+값은 0 이상이며 마이크로초 단위로 표현할 수 있는 기간이어야 합니다. `PT5M`은 ISO 8601 기간 표기 예시일 뿐, 기본값이나 운영 확정값이 아닙니다. Grace는 방 접수 시간이 아니라 [멱등성 기록의 보존 기간](../domain/publication.md#db-시계와-만료)을 늘립니다.
+
 ### GitHub Variables
 
 저장소 Actions variables에 다음 비밀이 아닌 식별자를 설정합니다.
