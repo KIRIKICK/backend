@@ -62,11 +62,11 @@ class ProductArtifactIsolationTest {
                 "reward/repository/RewardPresetRepository.class",
                 "room/domain/QRoom.class",
                 "room/domain/Room.class",
-                "room/domain/Room$ResultState.class",
-                "room/domain/Room$Status.class",
+                "room/domain/RoomResultState.class",
+                "room/domain/RoomStatus.class",
                 "room/domain/exception/RoomErrorCode.class",
                 "room/repository/RoomRepository.class",
-                "room/repository/RoomRepository$State.class")
+                "room/repository/projection/RoomState.class")
             .stream()
             .map(api::resolve)
             .toList();

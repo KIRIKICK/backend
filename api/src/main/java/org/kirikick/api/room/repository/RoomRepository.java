@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.repository.projection.RoomState;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -30,7 +31,7 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
       from Room r
       where r.id = :id
       """)
-  Optional<State> findCurrentState(@Param("id") Long id);
+  Optional<RoomState> findCurrentState(@Param("id") Long id);
 
   @Query(
       value =
@@ -42,15 +43,4 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
           """,
       nativeQuery = true)
   List<Long> findUnsettledCandidateIds(@Param("asOf") Instant asOf);
-
-  interface State {
-
-    Room.Status getStatus();
-
-    Room.ResultState getResultState();
-
-    Instant getOpenedAt();
-
-    Instant getClosesAt();
-  }
 }

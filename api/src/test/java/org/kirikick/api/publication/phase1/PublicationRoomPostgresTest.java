@@ -32,6 +32,8 @@ import org.kirikick.api.question.domain.QuestionPreset;
 import org.kirikick.api.question.domain.QuestionPresetChoice;
 import org.kirikick.api.reward.domain.RewardPreset;
 import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.domain.RoomResultState;
+import org.kirikick.api.room.domain.RoomStatus;
 import org.kirikick.api.room.domain.exception.RoomErrorCode;
 import org.kirikick.api.room.repository.RoomRepository;
 import org.kirikick.api.user.domain.User;
@@ -152,13 +154,13 @@ class PublicationRoomPostgresTest {
                 em.flush();
                 em.clear();
                 Room open = em.find(Room.class, room.getId());
-                assertThat(open.getStatus()).isEqualTo(Room.Status.OPEN);
-                assertThat(open.getResultState()).isEqualTo(Room.ResultState.NOT_READY);
+                assertThat(open.getStatus()).isEqualTo(RoomStatus.OPEN);
+                assertThat(open.getResultState()).isEqualTo(RoomResultState.NOT_READY);
                 open.closeIntake();
                 em.flush();
                 em.clear();
                 assertThat(em.find(Room.class, room.getId()).getStatus())
-                    .isEqualTo(Room.Status.CLOSED);
+                    .isEqualTo(RoomStatus.CLOSED);
                 return room.getId();
               });
           assertThat(
@@ -169,10 +171,10 @@ class PublicationRoomPostgresTest {
               .isEqualTo("CLOSED/NOT_READY");
           tx.executeWithoutResult(status -> {
             // FINAL writer is out of scope; exercise only the enum mapping here.
-            setField(em.find(Room.class, id), "resultState", Room.ResultState.FINAL);
+            setField(em.find(Room.class, id), "resultState", RoomResultState.FINAL);
             em.flush();
             em.clear();
-            assertThat(em.find(Room.class, id).getResultState()).isEqualTo(Room.ResultState.FINAL);
+            assertThat(em.find(Room.class, id).getResultState()).isEqualTo(RoomResultState.FINAL);
           });
           assertThat(
                   jdbc.sql("select result_state from rooms where id = ?")

@@ -27,7 +27,9 @@ import org.kirikick.api.question.repository.QuestionPresetRepository;
 import org.kirikick.api.reward.domain.RewardPreset;
 import org.kirikick.api.reward.repository.RewardPresetRepository;
 import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.domain.RoomStatus;
 import org.kirikick.api.room.repository.RoomRepository;
+import org.kirikick.api.room.repository.projection.RoomState;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.domain.UserStatus;
 import org.kirikick.api.user.domain.exception.UserErrorCode;
@@ -127,12 +129,12 @@ public class OpenRoomService {
         .lockById(roomId)
         .orElseThrow(
             () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
-    RoomRepository.State state =
+    RoomState state =
         rooms
             .findCurrentState(roomId)
             .orElseThrow(
                 () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
-    if (state.getStatus() != Room.Status.OPEN) {
+    if (state.getStatus() != RoomStatus.OPEN) {
       return;
     }
     if (state.getOpenedAt() == null || state.getClosesAt() == null) {

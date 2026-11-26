@@ -45,11 +45,11 @@ public class Room extends BaseCreatedTimeEntity {
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 20)
-  private Status status;
+  private RoomStatus status;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "result_state", nullable = false, length = 20)
-  private ResultState resultState;
+  private RoomResultState resultState;
 
   @Column(name = "opened_at")
   private Instant openedAt;
@@ -61,13 +61,13 @@ public class Room extends BaseCreatedTimeEntity {
     Room room = new Room();
     room.host = Objects.requireNonNull(host);
     room.selectedRewardPreset = Objects.requireNonNull(selectedRewardPreset);
-    room.status = Status.OPEN;
-    room.resultState = ResultState.NOT_READY;
+    room.status = RoomStatus.OPEN;
+    room.resultState = RoomResultState.NOT_READY;
     return room;
   }
 
   public void publish(Instant openedAt, Instant closesAt) {
-    if (status != Status.OPEN || this.openedAt != null || this.closesAt != null) {
+    if (status != RoomStatus.OPEN || this.openedAt != null || this.closesAt != null) {
       throw new DomainException(RoomErrorCode.ROOM_ALREADY_PUBLISHED);
     }
     if (openedAt == null || !openedAt.plus(Duration.ofHours(24)).equals(closesAt)) {
@@ -81,16 +81,6 @@ public class Room extends BaseCreatedTimeEntity {
     if (openedAt == null || closesAt == null) {
       throw new DomainException(RoomErrorCode.INCOMPLETE_PUBLICATION_TIME);
     }
-    status = Status.CLOSED;
-  }
-
-  public enum Status {
-    OPEN,
-    CLOSED
-  }
-
-  public enum ResultState {
-    NOT_READY,
-    FINAL
+    status = RoomStatus.CLOSED;
   }
 }

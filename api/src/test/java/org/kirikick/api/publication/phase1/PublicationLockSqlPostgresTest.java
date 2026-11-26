@@ -29,7 +29,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.domain.RoomResultState;
+import org.kirikick.api.room.domain.RoomStatus;
 import org.kirikick.api.room.repository.RoomRepository;
 import org.kirikick.api.user.repository.UserRepository;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
@@ -240,7 +241,7 @@ class PublicationLockSqlPostgresTest {
                     RoomId room = get(fixture);
                     var oldRoom = rooms.findById(room.id()).orElseThrow();
                     Instant before = clock.readCurrentTime();
-                    assertThat(oldRoom.getStatus()).isEqualTo(Room.Status.OPEN);
+                    assertThat(oldRoom.getStatus()).isEqualTo(RoomStatus.OPEN);
                     assertThat(users.lockById(user)).contains(user);
                     assertThat(rooms.lockById(room.id())).contains(room.id());
                     Instant after = clock.readCurrentTime();
@@ -248,7 +249,7 @@ class PublicationLockSqlPostgresTest {
                     assertThat(state.getOpenedAt())
                         .isEqualTo(room.closesAt().minus(Duration.ofHours(24)));
                     assertThat(state.getClosesAt()).isEqualTo(room.closesAt());
-                    assertThat(state.getResultState()).isEqualTo(Room.ResultState.NOT_READY);
+                    assertThat(state.getResultState()).isEqualTo(RoomResultState.NOT_READY);
                     result.complete(
                         new RoomRead(before, after, oldRoom.getStatus(), state.getStatus()));
                     waiterStatus.setRollbackOnly();
@@ -280,13 +281,13 @@ class PublicationLockSqlPostgresTest {
             RoomId room = get(fixture);
             RoomRead read = get(result);
             assertThat(read.before()).isBefore(room.closesAt());
-            assertThat(read.oldStatus()).isEqualTo(Room.Status.OPEN);
+            assertThat(read.oldStatus()).isEqualTo(RoomStatus.OPEN);
             if (crossesDeadline) {
               assertThat(read.after()).isAfterOrEqualTo(room.closesAt());
-              assertThat(read.currentStatus()).isEqualTo(Room.Status.OPEN);
+              assertThat(read.currentStatus()).isEqualTo(RoomStatus.OPEN);
             } else {
               assertThat(read.after()).isBefore(room.closesAt());
-              assertThat(read.currentStatus()).isEqualTo(Room.Status.CLOSED);
+              assertThat(read.currentStatus()).isEqualTo(RoomStatus.CLOSED);
             }
             System.out.printf(
                 "%s room=%d closes=%s read=%s%n", label, room.id(), room.closesAt(), read);
@@ -563,5 +564,5 @@ class PublicationLockSqlPostgresTest {
   private record RoomId(long id, Instant closesAt) {}
 
   private record RoomRead(
-      Instant before, Instant after, Room.Status oldStatus, Room.Status currentStatus) {}
+      Instant before, Instant after, RoomStatus oldStatus, RoomStatus currentStatus) {}
 }
