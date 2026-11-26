@@ -19,8 +19,9 @@ import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Claim;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Replay;
+import org.kirikick.api.publication.repository.model.PublicationClaim;
+import org.kirikick.api.publication.repository.model.PublicationReplay;
+import org.kirikick.api.publication.repository.model.PublicationReservation;
 import org.kirikick.api.question.domain.QuestionPreset;
 import org.kirikick.api.question.domain.QuestionPresetChoice;
 import org.kirikick.api.question.repository.QuestionPresetChoiceRepository;
@@ -74,20 +75,17 @@ public class OpenRoomService {
             .findByUuid(userUuid)
             .map(User::getId)
             .orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    PublicationIdempotencyRepository.Reservation reservation =
-        records.reserveNkCreate(userId, requestKey, input);
-    if (reservation instanceof Replay replay) {
+    PublicationReservation reservation = records.reserveNkCreate(userId, requestKey, input);
+    if (reservation instanceof PublicationReplay replay) {
       return PublicationResult.replayed(
           replay.roomId(), replay.gameId(), replay.openedAt(), replay.closesAt());
     }
-    Claim claim = (Claim) reservation;
-    users.lockById(userId).orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    User user =
+    PublicationClaim claim = (PublicationClaim) reservation;
+    String userStatus =
         users
-            .findById(userId)
+            .lockAndFindStatusById(userId)
             .orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    entityManager.refresh(user);
-    if (user.getStatus() != UserStatus.ACTIVE) {
+    if (!UserStatus.ACTIVE.name().equals(userStatus)) {
       throw new DomainException(AuthErrorCode.ACCOUNT_INACTIVE);
     }
     rooms.findStoredOpenRoomIdByHostUserId(userId).ifPresent(this::reconcileOpenRoom);
@@ -108,7 +106,7 @@ public class OpenRoomService {
       }
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
     }
-    Room room = rooms.saveAndFlush(Room.prepare(user, reward));
+    Room room = rooms.saveAndFlush(Room.prepare(users.getReferenceById(userId), reward));
     Game game = games.saveAndFlush(Game.prepare(room, question));
     List<Choice> choices =
         gameChoices.saveAllAndFlush(
@@ -128,13 +126,9 @@ public class OpenRoomService {
   }
 
   private void reconcileOpenRoom(long roomId) {
-    rooms
-        .lockById(roomId)
-        .orElseThrow(
-            () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
     RoomState state =
         rooms
-            .findCurrentState(roomId)
+            .lockAndFindCurrentStateById(roomId)
             .orElseThrow(
                 () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
     if (state.getStatus() != RoomStatus.OPEN) {

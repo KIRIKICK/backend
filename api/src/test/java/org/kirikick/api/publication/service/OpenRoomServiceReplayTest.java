@@ -2,11 +2,10 @@ package org.kirikick.api.publication.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.only;
 
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
@@ -24,7 +23,7 @@ import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Replay;
+import org.kirikick.api.publication.repository.model.PublicationReplay;
 import org.kirikick.api.question.repository.QuestionPresetChoiceRepository;
 import org.kirikick.api.question.repository.QuestionPresetRepository;
 import org.kirikick.api.reward.repository.RewardPresetRepository;
@@ -60,7 +59,7 @@ class OpenRoomServiceReplayTest {
     Instant openedAt = Instant.parse("2040-01-01T00:00:00Z");
     Instant closesAt = openedAt.plus(Duration.ofHours(24));
     given(records.reserveNkCreate(42L, key, input))
-        .willReturn(new Replay(10L, 20L, openedAt, closesAt));
+        .willReturn(new PublicationReplay(10L, 20L, openedAt, closesAt));
     OpenRoomService service =
         new OpenRoomService(
             transactions,
@@ -79,7 +78,7 @@ class OpenRoomServiceReplayTest {
 
     assertThat(service.publish(subject, key, input))
         .isEqualTo(new PublicationResult(false, 10L, 20L, openedAt, closesAt));
-    then(users).should(never()).lockById(anyLong());
+    then(users).should(only()).findByUuid(subject);
     then(rooms).shouldHaveNoInteractions();
     then(games).shouldHaveNoInteractions();
     then(gameChoices).shouldHaveNoInteractions();

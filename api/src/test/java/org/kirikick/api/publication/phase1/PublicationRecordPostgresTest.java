@@ -26,6 +26,7 @@ import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
+import org.kirikick.api.publication.repository.model.PublicationClaim;
 import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -481,7 +482,7 @@ class PublicationRecordPostgresTest {
       inTransaction(
           context,
           ignored -> {
-            PublicationIdempotencyRepository.Claim claim =
+            PublicationClaim claim =
                 repository(context).tryClaim(userId, "complete", input(jdbc, gameId)).orElseThrow();
             repository(context).completeClaim(claim, gameId, expiry);
           });
@@ -513,7 +514,7 @@ class PublicationRecordPostgresTest {
       inTransaction(
           context,
           ignored -> {
-            PublicationIdempotencyRepository.Claim claim =
+            PublicationClaim claim =
                 repository(context)
                     .tryClaim(userId, "old-config", input(jdbc, gameId))
                     .orElseThrow();
@@ -621,7 +622,7 @@ class PublicationRecordPostgresTest {
               inTransaction(
                   context,
                   ignored -> {
-                    PublicationIdempotencyRepository.Claim claim =
+                    PublicationClaim claim =
                         repository(context)
                             .tryClaim(userId, "cas", input(jdbc, gameId))
                             .orElseThrow();

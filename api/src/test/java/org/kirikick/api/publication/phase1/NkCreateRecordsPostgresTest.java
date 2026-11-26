@@ -29,8 +29,8 @@ import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Claim;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Replay;
+import org.kirikick.api.publication.repository.model.PublicationClaim;
+import org.kirikick.api.publication.repository.model.PublicationReplay;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -58,7 +58,7 @@ class NkCreateRecordsPostgresTest {
       var f = fixture(db);
       var records = recordsAt(db, -1);
       tx.executeWithoutResult(status -> {
-        var claim = (Claim) records.reserveNkCreate(f.user(), "replay", f.input());
+        var claim = (PublicationClaim) records.reserveNkCreate(f.user(), "replay", f.input());
         records.completeClaim(claim, f.game(), EXPIRY);
       });
       var before = row(db, f, "replay");
@@ -71,7 +71,8 @@ class NkCreateRecordsPostgresTest {
               f.input().choiceIds().reversed(),
               f.input().correctChoiceId());
       var replay =
-          (Replay) tx.execute(status -> records.reserveNkCreate(f.user(), "replay", reordered));
+          (PublicationReplay)
+              tx.execute(status -> records.reserveNkCreate(f.user(), "replay", reordered));
       assertThat(replay.gameId()).isEqualTo(f.game());
       assertThat(replay.roomId()).isEqualTo(f.room());
       assertThat(replay.closesAt()).isEqualTo(replay.openedAt().plusSeconds(86400));
@@ -129,18 +130,18 @@ class NkCreateRecordsPostgresTest {
       var old = recordsAt(db, -1);
       var oldClaim =
           tx.execute(status -> {
-            var claim = (Claim) old.reserveNkCreate(f.user(), "expiry", f.input());
+            var claim = (PublicationClaim) old.reserveNkCreate(f.user(), "expiry", f.input());
             old.completeClaim(claim, f.game(), EXPIRY);
             return claim;
           });
       var before = row(db, f, "expiry");
       var beforeExpiry = tx.execute(status -> old.reserveNkCreate(f.user(), "expiry", f.input()));
-      assertThat(beforeExpiry).isInstanceOf(Replay.class);
+      assertThat(beforeExpiry).isInstanceOf(PublicationReplay.class);
       var exact = recordsAt(db, 0);
       assertThatThrownBy(() ->
               tx.executeWithoutResult(status -> {
                 var fresh = exact.reserveNkCreate(f.user(), "expiry", f.input());
-                assertThat(fresh).isInstanceOf(Claim.class);
+                assertThat(fresh).isInstanceOf(PublicationClaim.class);
                 assertThat(row(db, f, "expiry"))
                     .containsEntry("game_id", null)
                     .containsEntry("record_expires_at", null)
@@ -153,14 +154,15 @@ class NkCreateRecordsPostgresTest {
       assertThatThrownBy(() ->
               tx.executeWithoutResult(status -> {
                 assertThat(after.reserveNkCreate(f.user(), "expiry", f.input()))
-                    .isInstanceOf(Claim.class);
+                    .isInstanceOf(PublicationClaim.class);
                 after.completeClaim(oldClaim, f.game(), EXPIRY.plusSeconds(1));
               }))
           .isInstanceOf(DomainException.class);
       assertThat(row(db, f, "expiry")).isEqualTo(before);
       assertThat(id(db, "select count(*) from games where id = ?", f.game())).isOne();
       var winner =
-          tx.execute(status -> (Claim) exact.reserveNkCreate(f.user(), "expiry", f.input()));
+          tx.execute(
+              status -> (PublicationClaim) exact.reserveNkCreate(f.user(), "expiry", f.input()));
       assertThatThrownBy(() ->
               tx.executeWithoutResult(
                   status -> exact.completeClaim(winner, f.game(), EXPIRY.plusSeconds(1))))
@@ -186,7 +188,7 @@ class NkCreateRecordsPostgresTest {
 
       tx.executeWithoutResult(status -> {
         var replacement =
-            (Claim) current.reserveNkCreate(f.user(), "different-expiry", alternative);
+            (PublicationClaim) current.reserveNkCreate(f.user(), "different-expiry", alternative);
         current.completeClaim(replacement, alternativeGame, EXPIRY.plusSeconds(60));
       });
 
@@ -201,7 +203,7 @@ class NkCreateRecordsPostgresTest {
       assertThat(replacementRecord.gameId()).isEqualTo(alternativeGame);
       assertThat(replacementRecord.claimId()).isNotEqualTo(before.get("claim_id"));
       var replay =
-          (Replay)
+          (PublicationReplay)
               tx.execute(
                   status -> current.reserveNkCreate(f.user(), "different-expiry", alternative));
       assertThat(replay.gameId()).isEqualTo(alternativeGame);
@@ -234,7 +236,8 @@ class NkCreateRecordsPostgresTest {
         var result =
             tx.execute(status -> {
               long holder = id(db, "select pg_backend_pid()");
-              var fresh = (Claim) records.reserveNkCreate(f.user(), "expired-race", f.input());
+              var fresh =
+                  (PublicationClaim) records.reserveNkCreate(f.user(), "expired-race", f.input());
               var waiting =
                   worker.submit(() ->
                       tx.execute(other -> {
@@ -247,7 +250,7 @@ class NkCreateRecordsPostgresTest {
             });
         assertThat(get(result))
             .isInstanceOfSatisfying(
-                Replay.class, replay -> assertThat(replay.gameId()).isEqualTo(newGame));
+                PublicationReplay.class, replay -> assertThat(replay.gameId()).isEqualTo(newGame));
       }
       assertThat(row(db, f, "expired-race"))
           .containsEntry("game_id", newGame)
@@ -267,7 +270,7 @@ class NkCreateRecordsPostgresTest {
       tx.executeWithoutResult(status -> {
         var old = records.tryClaim(f.user(), "same-xid", f.input()).orElseThrow();
         records.completeClaim(old, f.game(), EXPIRY);
-        var fresh = (Claim) records.reserveNkCreate(f.user(), "same-xid", f.input());
+        var fresh = (PublicationClaim) records.reserveNkCreate(f.user(), "same-xid", f.input());
 
         assertThat(fresh).isNotSameAs(old);
         assertThatThrownBy(() -> records.completeClaim(old, f.game(), later))
@@ -501,7 +504,7 @@ class NkCreateRecordsPostgresTest {
                               .isZero();
                           waiter.complete(id(db, "select pg_backend_pid()"));
                           var reservation = records.reserveNkCreate(f.user(), key, f.input());
-                          if (reservation instanceof Claim claim) {
+                          if (reservation instanceof PublicationClaim claim) {
                             records.completeClaim(claim, f.game(), EXPIRY);
                           }
                           return (Object) reservation;
@@ -514,7 +517,8 @@ class NkCreateRecordsPostgresTest {
                 }
                 return waiting;
               });
-          assertThat(get(result)).isInstanceOf(commit ? Replay.class : Claim.class);
+          assertThat(get(result))
+              .isInstanceOf(commit ? PublicationReplay.class : PublicationClaim.class);
           assertThat(row(db, f, key)).containsEntry("game_id", f.game());
           db.sql("delete from publication_idempotency where user_id = ? and request_key = ?")
               .params(f.user(), key)

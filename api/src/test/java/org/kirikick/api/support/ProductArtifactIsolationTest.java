@@ -46,9 +46,12 @@ class ProductArtifactIsolationTest {
                 "publication/infra/PublicationCommitObserver$Snapshot.class",
                 "publication/infra/PublicationDataSource.class",
                 "publication/repository/PublicationIdempotencyRepository.class",
-                "publication/repository/PublicationIdempotencyRepository$Claim.class",
-                "publication/repository/PublicationIdempotencyRepository$Replay.class",
-                "publication/repository/PublicationIdempotencyRepository$Reservation.class",
+                "publication/repository/PublicationIdempotencyRepository$1.class",
+                "publication/repository/model/ExistingReservation.class",
+                "publication/repository/model/LockedReservation.class",
+                "publication/repository/model/PublicationClaim.class",
+                "publication/repository/model/PublicationReplay.class",
+                "publication/repository/model/PublicationReservation.class",
                 "publication/service/OpenRoomService.class",
                 "publication/service/PublicationResult.class",
                 "question/domain/QQuestionPreset.class",
@@ -66,6 +69,7 @@ class ProductArtifactIsolationTest {
                 "room/domain/RoomStatus.class",
                 "room/domain/exception/RoomErrorCode.class",
                 "room/repository/RoomRepository.class",
+                "room/repository/projection/PublicationState.class",
                 "room/repository/projection/RoomState.class")
             .stream()
             .map(api::resolve)

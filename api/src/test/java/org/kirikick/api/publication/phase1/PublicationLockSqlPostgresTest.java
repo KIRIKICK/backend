@@ -83,7 +83,7 @@ class PublicationLockSqlPostgresTest {
                             .single())
                     .isEqualTo(user);
               } else {
-                assertThat(users.lockById(user)).contains(user);
+                assertThat(users.lockAndFindStatusById(user)).contains("ACTIVE");
               }
               trial.launch(() ->
                   tx.executeWithoutResult(waiterStatus -> {
@@ -101,7 +101,7 @@ class PublicationLockSqlPostgresTest {
                                 .single())
                         .isOne();
                     trial.claimExecuted.complete(true);
-                    assertThat(users.lockById(user)).contains(user);
+                    assertThat(users.lockAndFindStatusById(user)).contains("ACTIVE");
                     waiterStatus.setRollbackOnly();
                   }));
               Wait wait = trial.awaitWait(observation -> true);
@@ -165,7 +165,7 @@ class PublicationLockSqlPostgresTest {
           try (var trial = new Trial(label, pool)) {
             tx.executeWithoutResult(status -> {
               trial.holder = actor(jdbc);
-              assertThat(rooms.lockById(fixture.id())).contains(fixture.id());
+              assertThat(rooms.lockAndFindCurrentStateById(fixture.id())).isPresent();
               trial.launch(() ->
                   tx.executeWithoutResult(waiterStatus -> {
                     trial.signalWaiter(actor(jdbc));
@@ -242,10 +242,9 @@ class PublicationLockSqlPostgresTest {
                     var oldRoom = rooms.findById(room.id()).orElseThrow();
                     Instant before = clock.readCurrentTime();
                     assertThat(oldRoom.getStatus()).isEqualTo(RoomStatus.OPEN);
-                    assertThat(users.lockById(user)).contains(user);
-                    assertThat(rooms.lockById(room.id())).contains(room.id());
+                    assertThat(users.lockAndFindStatusById(user)).contains("ACTIVE");
+                    var state = rooms.lockAndFindCurrentStateById(room.id()).orElseThrow();
                     Instant after = clock.readCurrentTime();
-                    var state = rooms.findCurrentState(room.id()).orElseThrow();
                     assertThat(state.getOpenedAt())
                         .isEqualTo(room.closesAt().minus(Duration.ofHours(24)));
                     assertThat(state.getClosesAt()).isEqualTo(room.closesAt());
@@ -258,7 +257,7 @@ class PublicationLockSqlPostgresTest {
               RoomId room =
                   requiresNewTransactions(context)
                       .execute(ignored -> newRoom(jdbc, user, crossesDeadline ? 4 : 300));
-              assertThat(rooms.lockById(room.id())).contains(room.id());
+              assertThat(rooms.lockAndFindCurrentStateById(room.id())).isPresent();
               fixture.complete(room);
               Wait before = trial.awaitWait(observation -> true);
               assertRoomWait(before);

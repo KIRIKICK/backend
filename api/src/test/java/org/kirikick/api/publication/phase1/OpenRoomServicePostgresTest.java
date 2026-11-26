@@ -152,6 +152,7 @@ class OpenRoomServicePostgresTest {
                         assertThat(failure.getErrorCode())
                             .isEqualTo(AuthErrorCode.ACCOUNT_INACTIVE));
             assertThat(wait.blockerPid()).isEqualTo(holderPid);
+            assertThat(wait.query()).contains("select status", "for no key update");
             assertThat(count(jdbc, "rooms")).isEqualTo(existingRoom ? 1 : 0);
             if (existingRoom) {
               assertThat(
@@ -464,6 +465,7 @@ class OpenRoomServicePostgresTest {
             JdbcClient jdbc = context.getBean(JdbcClient.class);
             Fixture fixture = fixture(jdbc);
             Instant closesAt = Instant.parse("2040-01-02T00:00:00Z");
+            Instant originalClosesAt = closesAt.plusSeconds(1);
             AtomicReference<Instant> now = new AtomicReference<>(closesAt.minusNanos(1_000));
             DbTimeSource clock =
                 new DbTimeSource(jdbc) {
@@ -475,8 +477,8 @@ class OpenRoomServicePostgresTest {
             long oldRoom = insertRoom(jdbc, fixture, "OPEN", "NOT_READY", "null", "null");
             jdbc.sql("update rooms set opened_at = ?, closes_at = ? where id = ?")
                 .params(
-                    closesAt.minus(Duration.ofHours(24)).atOffset(ZoneOffset.UTC),
-                    closesAt.atOffset(ZoneOffset.UTC),
+                    originalClosesAt.minus(Duration.ofHours(24)).atOffset(ZoneOffset.UTC),
+                    originalClosesAt.atOffset(ZoneOffset.UTC),
                     oldRoom)
                 .update();
             OpenRoomService service = service(context, clock);
@@ -496,12 +498,22 @@ class OpenRoomServicePostgresTest {
                       service.publish(
                           fixture.userUuid(), "room-lock-deadline-key", input(fixture)));
               WaitEvidence wait = awaitRoomWait(jdbc, holderPid, pending);
+              try (var statement =
+                  holder.prepareStatement(
+                      "update rooms set opened_at = ?, closes_at = ? where id = ?")) {
+                statement.setObject(
+                    1, closesAt.minus(Duration.ofHours(24)).atOffset(ZoneOffset.UTC));
+                statement.setObject(2, closesAt.atOffset(ZoneOffset.UTC));
+                statement.setLong(3, oldRoom);
+                assertThat(statement.executeUpdate()).isOne();
+              }
               now.set(closesAt);
               holder.commit();
               PublicationResult created = pending.get(10, TimeUnit.SECONDS);
 
               assertThat(wait.blockerPid()).isEqualTo(holderPid);
               assertThat(wait.waitEventType()).isEqualTo("Lock");
+              assertThat(wait.query()).contains("opened_at", "closes_at", "for update");
               assertThat(
                       jdbc.sql("select status from rooms where id = ?")
                           .param(oldRoom)
