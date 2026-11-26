@@ -5,7 +5,7 @@ import org.kirikick.api.common.controller.dto.ErrorResponse;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.config.PublicationEnabledCondition;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
-import org.kirikick.api.publication.infra.PublicationCommitObserver.OutcomeUnknownException;
+import org.kirikick.api.publication.infra.exception.PublicationCommitOutcomeUnknownException;
 import org.kirikick.api.user.domain.exception.UserErrorCode;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.http.CacheControl;
@@ -74,7 +74,7 @@ public class OpenRoomExceptionHandler {
         PublicationErrorCode.INVALID_PUBLICATION_INPUT.getMessage());
   }
 
-  @ExceptionHandler(OutcomeUnknownException.class)
+  @ExceptionHandler(PublicationCommitOutcomeUnknownException.class)
   public ResponseEntity<ErrorResponse> outcomeUnknown() {
     return error(HttpStatus.SERVICE_UNAVAILABLE, OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_MESSAGE);
   }

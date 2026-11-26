@@ -13,6 +13,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.kirikick.api.publication.infra.exception.PublicationCommitOutcomeUnknownException;
 import org.mockito.Mockito;
 
 class PublicationDataSourceTest {
@@ -71,7 +72,7 @@ class PublicationDataSourceTest {
                   commitAsRuntime(observed);
                   return null;
                 }))
-        .isInstanceOf(PublicationCommitObserver.OutcomeUnknownException.class)
+        .isInstanceOf(PublicationCommitOutcomeUnknownException.class)
         .satisfies(thrown -> assertThat(thrown.getCause().getCause()).isSameAs(failure));
 
     assertThat(acquire(dataSource, credentials)).isSameAs(connection);

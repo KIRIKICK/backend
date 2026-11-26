@@ -12,6 +12,8 @@ import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.kirikick.api.publication.infra.exception.PublicationCommitOutcomeUnknownException;
+import org.kirikick.api.publication.infra.model.PublicationCommitSnapshot;
 import org.mockito.Mockito;
 
 class PublicationCommitObserverTest {
@@ -34,15 +36,14 @@ class PublicationCommitObserverTest {
               commitAsRuntime(observed);
               return null;
             }))
-        .isInstanceOf(PublicationCommitObserver.OutcomeUnknownException.class)
+        .isInstanceOf(PublicationCommitOutcomeUnknownException.class)
         .satisfies(thrown -> {
-          PublicationCommitObserver.OutcomeUnknownException exception =
-              (PublicationCommitObserver.OutcomeUnknownException) thrown;
+          PublicationCommitOutcomeUnknownException exception =
+              (PublicationCommitOutcomeUnknownException) thrown;
           assertThat(exception.getCause()).isInstanceOf(IllegalStateException.class);
           assertThat(exception.getCause().getCause()).isSameAs(boundary);
           assertThat(exception.snapshot())
-              .isEqualTo(
-                  new PublicationCommitObserver.Snapshot(true, false, true, true, false, true));
+              .isEqualTo(new PublicationCommitSnapshot(true, false, true, true, false, true));
         });
   }
 
@@ -97,7 +98,7 @@ class PublicationCommitObserverTest {
               }
               return null;
             }))
-        .isInstanceOf(PublicationCommitObserver.OutcomeUnknownException.class)
+        .isInstanceOf(PublicationCommitOutcomeUnknownException.class)
         .hasCause(outer);
   }
 
