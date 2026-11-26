@@ -31,6 +31,7 @@ import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.infra.PublicationDataSource;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.publication.service.OpenRoomService;
+import org.kirikick.api.publication.service.PublicationResult;
 import org.kirikick.api.question.repository.QuestionPresetChoiceRepository;
 import org.kirikick.api.question.repository.QuestionPresetRepository;
 import org.kirikick.api.reward.repository.RewardPresetRepository;
@@ -86,7 +87,7 @@ class PublicationRequiresNewPostgresTest {
                 outer.executeWithoutResult(status -> {
                   ConnectionState outerBefore = state(jdbc);
 
-                  OpenRoomService.Result result =
+                  PublicationResult result =
                       service(context)
                           .publish(fixture.userUuid(), "requires-new-key", input(fixture));
 

@@ -78,7 +78,7 @@ class OpenRoomServiceReplayTest {
             new PublicationCommitObserver());
 
     assertThat(service.publish(subject, key, input))
-        .isEqualTo(new OpenRoomService.Result(false, 10L, 20L, openedAt, closesAt));
+        .isEqualTo(new PublicationResult(false, 10L, 20L, openedAt, closesAt));
     then(users).should(never()).lockById(anyLong());
     then(rooms).shouldHaveNoInteractions();
     then(games).shouldHaveNoInteractions();

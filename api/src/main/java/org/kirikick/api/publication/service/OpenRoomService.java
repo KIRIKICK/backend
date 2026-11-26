@@ -55,7 +55,7 @@ public class OpenRoomService {
   private final PublicationProperties properties;
   private final PublicationCommitObserver commitObserver;
 
-  public Result publish(UUID userUuid, String requestKey, PublicationInput input) {
+  public PublicationResult publish(UUID userUuid, String requestKey, PublicationInput input) {
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -63,7 +63,8 @@ public class OpenRoomService {
         () -> transaction.execute(status -> publishInTransaction(userUuid, requestKey, input)));
   }
 
-  private Result publishInTransaction(UUID userUuid, String requestKey, PublicationInput input) {
+  private PublicationResult publishInTransaction(
+      UUID userUuid, String requestKey, PublicationInput input) {
     if (input.kind() != PublicationInput.Kind.NK_CREATE) {
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
     }
@@ -75,7 +76,8 @@ public class OpenRoomService {
     PublicationIdempotencyRepository.Reservation reservation =
         records.reserveNkCreate(userId, requestKey, input);
     if (reservation instanceof Replay replay) {
-      return replay(replay);
+      return PublicationResult.replayed(
+          replay.roomId(), replay.gameId(), replay.openedAt(), replay.closesAt());
     }
     Claim claim = (Claim) reservation;
     users.lockById(userId).orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
@@ -121,7 +123,7 @@ public class OpenRoomService {
     entityManager.flush();
     records.completeClaim(claim, game.getId(), properties.recordExpiresAt(openedAt));
     entityManager.flush();
-    return new Result(true, room.getId(), game.getId(), openedAt, closesAt);
+    return PublicationResult.created(room.getId(), game.getId(), openedAt, closesAt);
   }
 
   private void reconcileOpenRoom(long roomId) {
@@ -151,12 +153,4 @@ public class OpenRoomService {
     room.closeIntake();
     entityManager.flush();
   }
-
-  private static Result replay(Replay replay) {
-    return new Result(
-        false, replay.roomId(), replay.gameId(), replay.openedAt(), replay.closesAt());
-  }
-
-  public record Result(
-      boolean created, long roomId, long gameId, Instant openedAt, Instant closesAt) {}
 }

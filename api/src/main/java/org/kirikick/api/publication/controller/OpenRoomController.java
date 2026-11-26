@@ -25,6 +25,7 @@ import org.kirikick.api.publication.controller.dto.NkCreateRequest;
 import org.kirikick.api.publication.controller.dto.NkCreateResponse;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.service.OpenRoomService;
+import org.kirikick.api.publication.service.PublicationResult;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -154,7 +155,7 @@ public class OpenRoomController {
       @AuthenticationPrincipal Jwt jwt,
       HttpServletRequest request,
       @Valid @RequestBody NkCreateRequest body) {
-    OpenRoomService.Result result =
+    PublicationResult result =
         service.publish(UUID.fromString(jwt.getSubject()), requestKey(request), body.toInput());
     NkCreateResponse response =
         new NkCreateResponse(

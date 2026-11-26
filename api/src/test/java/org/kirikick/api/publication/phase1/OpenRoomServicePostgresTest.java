@@ -36,6 +36,7 @@ import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.publication.service.OpenRoomService;
+import org.kirikick.api.publication.service.PublicationResult;
 import org.kirikick.api.question.repository.QuestionPresetChoiceRepository;
 import org.kirikick.api.question.repository.QuestionPresetRepository;
 import org.kirikick.api.reward.repository.RewardPresetRepository;
@@ -78,16 +79,16 @@ class OpenRoomServicePostgresTest {
                   fixture.choiceIds().reversed(),
                   fixture.choiceIds().get(1));
 
-          OpenRoomService.Result created =
+          PublicationResult created =
               service.publish(fixture.userUuid(), "nkcreate-service-key", input);
-          OpenRoomService.Result replayed =
+          PublicationResult replayed =
               service.publish(fixture.userUuid(), "nkcreate-service-key", input);
 
           assertThat(created.created()).isTrue();
           assertThat(replayed.created()).isFalse();
           assertThat(replayed)
               .isEqualTo(
-                  new OpenRoomService.Result(
+                  new PublicationResult(
                       false,
                       created.roomId(),
                       created.gameId(),
@@ -211,7 +212,7 @@ class OpenRoomServicePostgresTest {
                   .query()
                   .singleRow();
 
-          OpenRoomService.Result created =
+          PublicationResult created =
               service(context).publish(fixture.userUuid(), "expired-room-key", input(fixture));
 
           var after =
@@ -348,7 +349,7 @@ class OpenRoomServicePostgresTest {
           JdbcClient jdbc = context.getBean(JdbcClient.class);
           Fixture fixture = fixture(jdbc);
           OpenRoomService service = service(context);
-          OpenRoomService.Result original =
+          PublicationResult original =
               service.publish(fixture.userUuid(), "replacement-key", input(fixture));
           jdbc.sql(
                   "update publication_idempotency set record_expires_at = now() - interval '1 microsecond' where request_key = ?")
@@ -489,14 +490,14 @@ class OpenRoomServicePostgresTest {
                   assertThat(ignored.next()).isTrue();
                 }
               }
-              Future<OpenRoomService.Result> pending =
+              Future<PublicationResult> pending =
                   workers.submit(() ->
                       service.publish(
                           fixture.userUuid(), "room-lock-deadline-key", input(fixture)));
               WaitEvidence wait = awaitRoomWait(jdbc, holderPid, pending);
               now.set(closesAt);
               holder.commit();
-              OpenRoomService.Result created = pending.get(10, TimeUnit.SECONDS);
+              PublicationResult created = pending.get(10, TimeUnit.SECONDS);
 
               assertThat(wait.blockerPid()).isEqualTo(holderPid);
               assertThat(wait.waitEventType()).isEqualTo("Lock");
@@ -565,7 +566,7 @@ class OpenRoomServicePostgresTest {
                     assertThat(wait.waitEventType()).isEqualTo("Lock");
                   });
               List<Object> results = List.of(firstResult, secondResult);
-              assertThat(results.stream().filter(OpenRoomService.Result.class::isInstance).count())
+              assertThat(results.stream().filter(PublicationResult.class::isInstance).count())
                   .isOne();
               assertThat(
                       results.stream()
@@ -609,18 +610,18 @@ class OpenRoomServicePostgresTest {
                   assertThat(result.next()).isTrue();
                 }
               }
-              Future<OpenRoomService.Result> first =
+              Future<PublicationResult> first =
                   workers.submit(
                       () -> service.publish(fixture.userUuid(), "same-key-race", input(fixture)));
               WaitEvidence firstWait = awaitUserWaiters(jdbc, holderPid, first).getFirst();
-              Future<OpenRoomService.Result> second =
+              Future<PublicationResult> second =
                   workers.submit(
                       () -> service.publish(fixture.userUuid(), "same-key-race", input(fixture)));
               WaitEvidence secondWait =
                   awaitAnyPublicationWait(jdbc, firstWait.waiterPid(), second);
               holder.commit();
-              OpenRoomService.Result firstResult = first.get(10, TimeUnit.SECONDS);
-              OpenRoomService.Result secondResult = second.get(10, TimeUnit.SECONDS);
+              PublicationResult firstResult = first.get(10, TimeUnit.SECONDS);
+              PublicationResult secondResult = second.get(10, TimeUnit.SECONDS);
 
               assertThat(firstWait.waiterPid()).isNotEqualTo(secondWait.waiterPid());
               assertThat(firstWait.blockerPid()).isEqualTo(holderPid);
