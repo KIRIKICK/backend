@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.room.repository.RoomRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -125,12 +126,7 @@ class PublicationTimePostgresTest {
           var records = context.getBean(PublicationIdempotencyRepository.class);
           var input =
               new PublicationInput(
-                  PublicationInput.Kind.NK_CREATE,
-                  null,
-                  reward,
-                  question,
-                  List.of(1L, 2L, 3L, 4L),
-                  1L);
+                  PublicationKind.NK_CREATE, null, reward, question, List.of(1L, 2L, 3L, 4L), 1L);
           var tx = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
           tx.executeWithoutResult(status ->
               records.completeClaim(

@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
-import org.kirikick.api.publication.domain.PublicationInput.Kind;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Claim;
@@ -64,7 +64,7 @@ class NkCreateRecordsPostgresTest {
       var before = row(db, f, "replay");
       var reordered =
           new PublicationInput(
-              Kind.NK_CREATE,
+              PublicationKind.NK_CREATE,
               null,
               f.input().rewardPresetId(),
               f.input().questionPresetId(),
@@ -81,28 +81,28 @@ class NkCreateRecordsPostgresTest {
       for (var changed :
           List.of(
               new PublicationInput(
-                  Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   old.rewardPresetId() + 10,
                   old.questionPresetId(),
                   old.choiceIds(),
                   old.correctChoiceId()),
               new PublicationInput(
-                  Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   old.rewardPresetId(),
                   old.questionPresetId() + 10,
                   old.choiceIds(),
                   old.correctChoiceId()),
               new PublicationInput(
-                  Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   old.rewardPresetId(),
                   old.questionPresetId(),
                   changedChoice,
                   old.correctChoiceId()),
               new PublicationInput(
-                  Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   old.rewardPresetId(),
                   old.questionPresetId(),
@@ -296,7 +296,7 @@ class NkCreateRecordsPostgresTest {
                   db,
                   f.user(),
                   new PublicationInput(
-                      Kind.NK_CREATE,
+                      PublicationKind.NK_CREATE,
                       null,
                       f.input().rewardPresetId(),
                       alternative.questionPresetId(),
@@ -308,7 +308,7 @@ class NkCreateRecordsPostgresTest {
                   db,
                   f.user(),
                   new PublicationInput(
-                      Kind.NK_CREATE,
+                      PublicationKind.NK_CREATE,
                       null,
                       alternative.rewardPresetId(),
                       f.input().questionPresetId(),
@@ -604,7 +604,8 @@ class NkCreateRecordsPostgresTest {
     return game(
         db,
         user,
-        new PublicationInput(Kind.NK_CREATE, null, reward, question, choices, choices.getFirst()));
+        new PublicationInput(
+            PublicationKind.NK_CREATE, null, reward, question, choices, choices.getFirst()));
   }
 
   private static PublicationInput alternativeInput(JdbcClient db) {
@@ -626,7 +627,8 @@ class NkCreateRecordsPostgresTest {
               question,
               "alternative-" + i));
     }
-    return new PublicationInput(Kind.NK_CREATE, null, reward, question, choices, choices.getLast());
+    return new PublicationInput(
+        PublicationKind.NK_CREATE, null, reward, question, choices, choices.getLast());
   }
 
   private static Fixture game(JdbcClient db, long user, PublicationInput input) {

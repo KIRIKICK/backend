@@ -32,6 +32,7 @@ import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
@@ -72,7 +73,7 @@ class OpenRoomServicePostgresTest {
           OpenRoomService service = service(context);
           PublicationInput input =
               new PublicationInput(
-                  PublicationInput.Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   fixture.rewardId(),
                   fixture.questionId(),
@@ -368,7 +369,7 @@ class OpenRoomServicePostgresTest {
                   .single();
           PublicationInput changed =
               new PublicationInput(
-                  PublicationInput.Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   otherReward,
                   fixture.questionId(),
@@ -408,7 +409,7 @@ class OpenRoomServicePostgresTest {
                   999999L);
           PublicationInput missingInput =
               new PublicationInput(
-                  PublicationInput.Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   fixture.rewardId(),
                   fixture.questionId(),
@@ -438,7 +439,7 @@ class OpenRoomServicePostgresTest {
                   foreign);
           PublicationInput foreignInput =
               new PublicationInput(
-                  PublicationInput.Kind.NK_CREATE,
+                  PublicationKind.NK_CREATE,
                   null,
                   fixture.rewardId(),
                   fixture.questionId(),
@@ -712,7 +713,7 @@ class OpenRoomServicePostgresTest {
 
   private static PublicationInput input(Fixture fixture) {
     return new PublicationInput(
-        PublicationInput.Kind.NK_CREATE,
+        PublicationKind.NK_CREATE,
         null,
         fixture.rewardId(),
         fixture.questionId(),

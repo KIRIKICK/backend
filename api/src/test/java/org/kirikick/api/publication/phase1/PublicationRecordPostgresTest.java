@@ -23,7 +23,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.publication.domain.PublicationInput;
-import org.kirikick.api.publication.domain.PublicationInput.Kind;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.springframework.context.ApplicationContext;
@@ -230,7 +230,8 @@ class PublicationRecordPostgresTest {
       long user = user(jdbc);
       var create = input();
       var add =
-          new PublicationInput(Kind.NK_KICK_ADD, 7L, null, 2L, List.of(14L, 11L, 13L, 12L), 11L);
+          new PublicationInput(
+              PublicationKind.NK_KICK_ADD, 7L, null, 2L, List.of(14L, 11L, 13L, 12L), 11L);
       inTransaction(
           context,
           ignored -> {
@@ -277,7 +278,7 @@ class PublicationRecordPostgresTest {
             assertThat(reloaded)
                 .isNotEqualTo(
                     new PublicationInput(
-                        Kind.NK_CREATE, null, 2L, 2L, List.of(11L, 12L, 13L, 14L), 11L));
+                        PublicationKind.NK_CREATE, null, 2L, 2L, List.of(11L, 12L, 13L, 14L), 11L));
           });
       System.out.printf(
           "P1-05 typed JSON %s; reordered value same, other reward/kind differs%n", fields);
@@ -378,8 +379,8 @@ class PublicationRecordPostgresTest {
   @Test
   @DisplayName("P1-05: 서로 다른 선택지 ID 3개는 선점 전에 거절한다")
   void rejectsThreeChoicesBeforeAClaimCanBeStored() {
-    assertThatThrownBy(
-            () -> new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L), 1L))
+    assertThatThrownBy(() ->
+            new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L), 1L))
         .isInstanceOfSatisfying(
             DomainException.class,
             e ->
@@ -391,7 +392,8 @@ class PublicationRecordPostgresTest {
   @DisplayName("P1-05: 서로 다른 선택지 ID 5개는 선점 전에 거절한다")
   void rejectsFiveChoicesBeforeAClaimCanBeStored() {
     assertThatThrownBy(() ->
-            new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L, 5L), 1L))
+            new PublicationInput(
+                PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L, 5L), 1L))
         .isInstanceOfSatisfying(
             DomainException.class,
             e ->
@@ -402,8 +404,9 @@ class PublicationRecordPostgresTest {
   @Test
   @DisplayName("P1-05: 4개 입력 중 중복된 선택지 ID는 선점 전에 거절한다")
   void rejectsDuplicateChoicesBeforeAClaimCanBeStored() {
-    assertThatThrownBy(
-            () -> new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 3L), 1L))
+    assertThatThrownBy(() ->
+            new PublicationInput(
+                PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 3L), 1L))
         .isInstanceOfSatisfying(
             DomainException.class,
             e ->
@@ -871,7 +874,7 @@ class PublicationRecordPostgresTest {
         .param(gameId)
         .query((row, rowNum) ->
             new PublicationInput(
-                Kind.NK_CREATE,
+                PublicationKind.NK_CREATE,
                 null,
                 row.getLong(1),
                 row.getLong(2),
@@ -881,7 +884,8 @@ class PublicationRecordPostgresTest {
   }
 
   private static PublicationInput input() {
-    return new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(11L, 12L, 13L, 14L), 11L);
+    return new PublicationInput(
+        PublicationKind.NK_CREATE, null, 1L, 2L, List.of(11L, 12L, 13L, 14L), 11L);
   }
 
   private static String inputJson() {

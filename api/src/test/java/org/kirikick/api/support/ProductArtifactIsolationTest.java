@@ -37,7 +37,7 @@ class ProductArtifactIsolationTest {
                 "publication/controller/dto/NkCreateResponse.class",
                 "publication/domain/PublicationIdempotencyRecord.class",
                 "publication/domain/PublicationInput.class",
-                "publication/domain/PublicationInput$Kind.class",
+                "publication/domain/PublicationKind.class",
                 "publication/domain/exception/PublicationErrorCode.class",
                 "publication/infra/PublicationCommitObserver.class",
                 "publication/infra/PublicationCommitObserver$BackendError.class",

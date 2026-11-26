@@ -14,7 +14,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
-import org.kirikick.api.publication.domain.PublicationInput.Kind;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -25,7 +25,8 @@ class PublicationRequestKeyTest {
   void rejectsInvalidKeysBeforeSql(String description, String key) {
     JdbcClient jdbc = mock(JdbcClient.class);
     var records = new PublicationIdempotencyRepository(jdbc, new DbTimeSource(jdbc));
-    var input = new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L), 1L);
+    var input =
+        new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L), 1L);
 
     assertThatThrownBy(() -> records.tryClaim(1L, key, input))
         .isInstanceOfSatisfying(

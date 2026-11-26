@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 
 /** Strict wire representation: IDs must be canonical positive decimal strings. */
@@ -22,7 +23,7 @@ public record NkCreateRequest(
 
   public PublicationInput toInput() {
     return new PublicationInput(
-        PublicationInput.Kind.NK_CREATE,
+        PublicationKind.NK_CREATE,
         null,
         parseId(rewardPresetId),
         parseId(questionPresetId),

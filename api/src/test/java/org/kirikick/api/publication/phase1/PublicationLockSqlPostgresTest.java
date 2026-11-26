@@ -28,6 +28,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.room.domain.RoomResultState;
 import org.kirikick.api.room.domain.RoomStatus;
@@ -45,8 +46,7 @@ class PublicationLockSqlPostgresTest {
 
   private static final PublicationPhase1Postgres POSTGRES = new PublicationPhase1Postgres();
   private static final PublicationInput INPUT =
-      new PublicationInput(
-          PublicationInput.Kind.NK_CREATE, null, 1L, 2L, List.of(5L, 3L, 1L, 4L), 4L);
+      new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(5L, 3L, 1L, 4L), 4L);
 
   @BeforeAll
   static void start() {

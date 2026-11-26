@@ -27,6 +27,7 @@ import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.infra.PublicationDataSource;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
@@ -209,7 +210,7 @@ class PublicationRequiresNewPostgresTest {
 
   private static PublicationInput input(Fixture fixture) {
     return new PublicationInput(
-        PublicationInput.Kind.NK_CREATE,
+        PublicationKind.NK_CREATE,
         null,
         fixture.rewardId(),
         fixture.questionId(),

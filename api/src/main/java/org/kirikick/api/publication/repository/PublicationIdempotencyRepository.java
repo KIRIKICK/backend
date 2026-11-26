@@ -22,6 +22,7 @@ import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationIdempotencyRecord;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -45,7 +46,7 @@ public class PublicationIdempotencyRepository {
 
   /** Reserve or recover the first publication inside the caller's READ COMMITTED transaction. */
   public Reservation reserveNkCreate(long userId, String requestKey, PublicationInput input) {
-    if (input.kind() != PublicationInput.Kind.NK_CREATE) {
+    if (input.kind() != PublicationKind.NK_CREATE) {
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_TARGET);
     }
     Optional<Claim> first = tryClaim(userId, requestKey, input);
