@@ -69,8 +69,7 @@ public class PublicationIdempotencyRepository {
    * Checks only the raw completion foreign key after authorization; it deliberately does not decode
    * the stored input or expiry.
    */
-  public boolean existingReservationReferencesGameInRoom(
-      ExistingReservation existing, long roomId) {
+  public boolean referencesGameInRoom(ExistingReservation existing, long roomId) {
     if (existing.gameId() == null) {
       return false;
     }
