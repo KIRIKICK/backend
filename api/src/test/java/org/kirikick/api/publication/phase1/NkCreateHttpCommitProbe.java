@@ -32,7 +32,8 @@ import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.event.service.spi.EventListenerRegistry;
 import org.hibernate.event.spi.EventType;
 import org.hibernate.event.spi.FlushEventListener;
-import org.kirikick.api.publication.infra.PublicationCommitObserver;
+import org.kirikick.api.publication.infra.exception.PublicationCommitOutcomeUnknownException;
+import org.kirikick.api.publication.infra.model.PublicationCommitSnapshot;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -150,7 +151,7 @@ final class NkCreateHttpCommitProbe {
     }
     testCase.outerFailure = failure;
     testCase.event("PRODUCT_OBSERVE_THROW");
-    if (failure instanceof PublicationCommitObserver.OutcomeUnknownException unknown) {
+    if (failure instanceof PublicationCommitOutcomeUnknownException unknown) {
       testCase.observerSnapshot = unknown.snapshot();
     }
   }
@@ -269,7 +270,7 @@ final class NkCreateHttpCommitProbe {
     private volatile int poolMaximumSize;
     private volatile int poolBorrowedConnections;
     private volatile SQLException connectionAcquisitionFailure;
-    private volatile PublicationCommitObserver.Snapshot observerSnapshot;
+    private volatile PublicationCommitSnapshot observerSnapshot;
     private volatile boolean failResponseWrite;
     private volatile boolean responseWriteFailed;
     private volatile boolean responseWriteObserved;
@@ -351,7 +352,7 @@ final class NkCreateHttpCommitProbe {
       event("PRODUCT_OBSERVE_EXIT");
     }
 
-    PublicationCommitObserver.Snapshot observerSnapshot() {
+    PublicationCommitSnapshot observerSnapshot() {
       return observerSnapshot;
     }
 

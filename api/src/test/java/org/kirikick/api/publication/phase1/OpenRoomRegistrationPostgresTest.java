@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.http.HttpResponse;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.ApiApplication;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.support.AuthTestSettings;
+import org.kirikick.api.publication.service.AddKickToRoomService;
 import org.kirikick.api.publication.service.OpenRoomService;
 import org.kirikick.api.user.repository.UserRepository;
 import org.kirikick.testsupport.postgres.PostgresTestDatabase;
@@ -21,6 +23,8 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 class OpenRoomRegistrationPostgresTest {
@@ -30,17 +34,22 @@ class OpenRoomRegistrationPostgresTest {
   void leavesTheExistingApplicationUnchangedWithoutGrace(String profile) {
     try (ConfigurableApplicationContext context = start(profile, null)) {
       assertThat(context.getBeansOfType(OpenRoomService.class)).isEmpty();
-      assertThat(hasPublicationRoute(context)).isFalse();
+      assertThat(context.getBeansOfType(AddKickToRoomService.class)).isEmpty();
+      assertThat(handlerType(context, "/games")).isEmpty();
+      assertThat(handlerType(context, "/rooms/{roomId}/games")).isEmpty();
     }
   }
 
   @ParameterizedTest(name = "profile={0}")
   @ValueSource(strings = {"local", "dev"})
-  @DisplayName("S-06: 로컬·DEV의 명시적 유효 시험 Grace에만 출제 경로가 등록된다")
+  @DisplayName("S-06: 유효 Grace는 두 출제 경로를 같은 컨트롤러에 등록한다")
   void registersOnlyWithExplicitValidFixtureGrace(String profile) {
     try (ConfigurableApplicationContext context = start(profile, "PT5M")) {
       assertThat(context.getBeansOfType(OpenRoomService.class)).hasSize(1);
-      assertThat(hasPublicationRoute(context)).isTrue();
+      assertThat(context.getBeansOfType(AddKickToRoomService.class)).hasSize(1);
+      var openRoomHandler = handlerType(context, "/games");
+      assertThat(openRoomHandler).isPresent();
+      assertThat(handlerType(context, "/rooms/{roomId}/games")).isEqualTo(openRoomHandler);
     }
   }
 
@@ -94,13 +103,19 @@ class OpenRoomRegistrationPostgresTest {
     }
   }
 
-  private static boolean hasPublicationRoute(ConfigurableApplicationContext context) {
+  private static Optional<Class<?>> handlerType(
+      ConfigurableApplicationContext context, String path) {
     return context
         .getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class)
         .getHandlerMethods()
-        .keySet()
+        .entrySet()
         .stream()
-        .anyMatch(mapping -> mapping.getPatternValues().contains("/games"));
+        .filter(entry ->
+            entry.getKey().getPatternValues().contains(path)
+                && entry.getKey().getMethodsCondition().getMethods().contains(RequestMethod.POST))
+        .map(Map.Entry::getValue)
+        .map(HandlerMethod::getBeanType)
+        .findFirst();
   }
 
   private static ConfigurableApplicationContext start(String profile, String grace) {

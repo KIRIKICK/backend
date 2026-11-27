@@ -3,7 +3,6 @@ package org.kirikick.api.publication.phase1;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.reset;
 import static org.mockito.BDDMockito.willAnswer;
 
@@ -40,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.support.AuthTestSettings;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.room.domain.Room;
@@ -125,7 +125,7 @@ class OpenRoomHttpCommitPostgresTest {
               return result;
             })
         .given(target)
-        .reserveNkCreate(anyLong(), anyString(), any(PublicationInput.class));
+        .reserveNkCreate(anyLong(), any(PublicationRequestKey.class), any(PublicationInput.class));
     willAnswer(
             invocation -> {
               Object result = invocation.callRealMethod();

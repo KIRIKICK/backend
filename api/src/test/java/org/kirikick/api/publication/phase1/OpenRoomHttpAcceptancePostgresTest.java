@@ -362,7 +362,7 @@ class OpenRoomHttpAcceptancePostgresTest {
     assertThat(recordSnapshot(fixture, key)).isEqualTo(originalRecord);
     assertThat(recordExpiry(fixture, key)).isEqualTo(expiry);
     assertOriginalPublicationOnly(fixture);
-    then(users).should(never()).lockById(anyLong());
+    then(users).should(never()).lockAndFindStatusById(anyLong());
     then(rooms).shouldHaveNoInteractions();
     then(questions).shouldHaveNoInteractions();
     then(choices).shouldHaveNoInteractions();

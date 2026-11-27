@@ -14,6 +14,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
   Optional<User> findByUuid(UUID uuid);
 
   @Transactional(propagation = Propagation.MANDATORY)
-  @Query(value = "select id from users where id = :id for no key update", nativeQuery = true)
-  Optional<Long> lockById(@Param("id") Long id);
+  @Query(value = "select status from users where id = :id for no key update", nativeQuery = true)
+  Optional<String> lockAndFindStatusById(@Param("id") Long id);
 }

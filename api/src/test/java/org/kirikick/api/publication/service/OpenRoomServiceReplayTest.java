@@ -2,11 +2,10 @@ package org.kirikick.api.publication.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.only;
 
 import jakarta.persistence.EntityManager;
 import java.time.Duration;
@@ -21,9 +20,11 @@ import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Replay;
+import org.kirikick.api.publication.repository.model.PublicationReplay;
 import org.kirikick.api.question.repository.QuestionPresetChoiceRepository;
 import org.kirikick.api.question.repository.QuestionPresetRepository;
 import org.kirikick.api.reward.repository.RewardPresetRepository;
@@ -55,12 +56,11 @@ class OpenRoomServiceReplayTest {
     given(users.findByUuid(subject)).willReturn(Optional.of(user));
     String key = UUID.randomUUID().toString();
     PublicationInput input =
-        new PublicationInput(
-            PublicationInput.Kind.NK_CREATE, null, 1L, 2L, List.of(3L, 4L, 5L, 6L), 3L);
+        new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(3L, 4L, 5L, 6L), 3L);
     Instant openedAt = Instant.parse("2040-01-01T00:00:00Z");
     Instant closesAt = openedAt.plus(Duration.ofHours(24));
-    given(records.reserveNkCreate(42L, key, input))
-        .willReturn(new Replay(10L, 20L, openedAt, closesAt));
+    given(records.reserveNkCreate(42L, new PublicationRequestKey(key), input))
+        .willReturn(new PublicationReplay(10L, 20L, openedAt, closesAt));
     OpenRoomService service =
         new OpenRoomService(
             transactions,
@@ -77,9 +77,9 @@ class OpenRoomServiceReplayTest {
             new PublicationProperties(Duration.ofMinutes(5)),
             new PublicationCommitObserver());
 
-    assertThat(service.publish(subject, key, input))
-        .isEqualTo(new OpenRoomService.Result(false, 10L, 20L, openedAt, closesAt));
-    then(users).should(never()).lockById(anyLong());
+    assertThat(service.publish(subject, new PublicationRequestKey(key), input))
+        .isEqualTo(new PublicationResult(false, 10L, 20L, openedAt, closesAt));
+    then(users).should(only()).findByUuid(subject);
     then(rooms).shouldHaveNoInteractions();
     then(games).shouldHaveNoInteractions();
     then(gameChoices).shouldHaveNoInteractions();

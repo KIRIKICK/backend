@@ -23,9 +23,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.config.PublicationProperties;
 import org.kirikick.api.publication.domain.PublicationInput;
-import org.kirikick.api.publication.domain.PublicationInput.Kind;
+import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
+import org.kirikick.api.publication.repository.model.PublicationClaim;
 import org.springframework.context.ApplicationContext;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -56,8 +58,14 @@ class PublicationRecordPostgresTest {
           context,
           ignored -> {
             var records = repository(context);
-            assertThat(records.tryClaim(userId, key, input())).isPresent();
-            assertThat(records.findForUpdate(userId, key).orElseThrow().requestKey())
+            assertThat(records.tryClaim(userId, new PublicationRequestKey(key), input()))
+                .isPresent();
+            assertThat(
+                    records
+                        .findForUpdate(userId, new PublicationRequestKey(key))
+                        .orElseThrow()
+                        .requestKey()
+                        .value())
                 .isEqualTo(key);
           });
       assertThat(
@@ -230,21 +238,29 @@ class PublicationRecordPostgresTest {
       long user = user(jdbc);
       var create = input();
       var add =
-          new PublicationInput(Kind.NK_KICK_ADD, 7L, null, 2L, List.of(14L, 11L, 13L, 12L), 11L);
+          new PublicationInput(
+              PublicationKind.NK_KICK_ADD, 7L, null, 2L, List.of(14L, 11L, 13L, 12L), 11L);
       inTransaction(
           context,
           ignored -> {
-            assertThat(repository(context).tryClaim(user, "create", create)).isPresent();
-            assertThat(repository(context).tryClaim(user, "create", add)).isEmpty();
-            assertThat(repository(context).tryClaim(user, "add", add)).isPresent();
+            assertThat(
+                    repository(context).tryClaim(user, new PublicationRequestKey("create"), create))
+                .isPresent();
+            assertThat(repository(context).tryClaim(user, new PublicationRequestKey("create"), add))
+                .isEmpty();
+            assertThat(repository(context).tryClaim(user, new PublicationRequestKey("add"), add))
+                .isPresent();
             assertThat(
                     repository(context)
-                        .findForUpdate(user, "create")
+                        .findForUpdate(user, new PublicationRequestKey("create"))
                         .orElseThrow()
                         .normalizedInput())
                 .isEqualTo(create);
             assertThat(
-                    repository(context).findForUpdate(user, "add").orElseThrow().normalizedInput())
+                    repository(context)
+                        .findForUpdate(user, new PublicationRequestKey("add"))
+                        .orElseThrow()
+                        .normalizedInput())
                 .isEqualTo(add);
           });
       var fields =
@@ -270,14 +286,14 @@ class PublicationRecordPostgresTest {
           ignored -> {
             var reloaded =
                 repository(context)
-                    .findForUpdate(user, "reordered")
+                    .findForUpdate(user, new PublicationRequestKey("reordered"))
                     .orElseThrow()
                     .normalizedInput();
             assertThat(reloaded).isEqualTo(create).isNotEqualTo(add);
             assertThat(reloaded)
                 .isNotEqualTo(
                     new PublicationInput(
-                        Kind.NK_CREATE, null, 2L, 2L, List.of(11L, 12L, 13L, 14L), 11L));
+                        PublicationKind.NK_CREATE, null, 2L, 2L, List.of(11L, 12L, 13L, 14L), 11L));
           });
       System.out.printf(
           "P1-05 typed JSON %s; reordered value same, other reward/kind differs%n", fields);
@@ -333,7 +349,10 @@ class PublicationRecordPostgresTest {
 
       assertThatThrownBy(() ->
               inTransaction(
-                  context, ignored -> repository(context).findForUpdate(userId, "missing-fields")))
+                  context,
+                  ignored ->
+                      repository(context)
+                          .findForUpdate(userId, new PublicationRequestKey("missing-fields"))))
           .isInstanceOfSatisfying(
               DomainException.class,
               e ->
@@ -366,7 +385,10 @@ class PublicationRecordPostgresTest {
 
       assertThatThrownBy(() ->
               inTransaction(
-                  context, ignored -> repository(context).findForUpdate(userId, "wrong-kind-type")))
+                  context,
+                  ignored ->
+                      repository(context)
+                          .findForUpdate(userId, new PublicationRequestKey("wrong-kind-type"))))
           .isInstanceOfSatisfying(
               DomainException.class,
               e ->
@@ -378,8 +400,8 @@ class PublicationRecordPostgresTest {
   @Test
   @DisplayName("P1-05: 서로 다른 선택지 ID 3개는 선점 전에 거절한다")
   void rejectsThreeChoicesBeforeAClaimCanBeStored() {
-    assertThatThrownBy(
-            () -> new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L), 1L))
+    assertThatThrownBy(() ->
+            new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L), 1L))
         .isInstanceOfSatisfying(
             DomainException.class,
             e ->
@@ -391,7 +413,8 @@ class PublicationRecordPostgresTest {
   @DisplayName("P1-05: 서로 다른 선택지 ID 5개는 선점 전에 거절한다")
   void rejectsFiveChoicesBeforeAClaimCanBeStored() {
     assertThatThrownBy(() ->
-            new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L, 5L), 1L))
+            new PublicationInput(
+                PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 4L, 5L), 1L))
         .isInstanceOfSatisfying(
             DomainException.class,
             e ->
@@ -402,8 +425,9 @@ class PublicationRecordPostgresTest {
   @Test
   @DisplayName("P1-05: 4개 입력 중 중복된 선택지 ID는 선점 전에 거절한다")
   void rejectsDuplicateChoicesBeforeAClaimCanBeStored() {
-    assertThatThrownBy(
-            () -> new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 3L), 1L))
+    assertThatThrownBy(() ->
+            new PublicationInput(
+                PublicationKind.NK_CREATE, null, 1L, 2L, List.of(1L, 2L, 3L, 3L), 1L))
         .isInstanceOfSatisfying(
             DomainException.class,
             e ->
@@ -419,21 +443,27 @@ class PublicationRecordPostgresTest {
       inTransaction(
           context,
           ignored ->
-              assertThat(repository(context).tryClaim(userId, "incomplete", input())).isPresent());
+              assertThat(
+                      repository(context)
+                          .tryClaim(userId, new PublicationRequestKey("incomplete"), input()))
+                  .isPresent());
 
       inTransaction(
           context,
           ignored ->
               assertThat(
                       repository(context)
-                          .findForUpdate(userId, "incomplete")
+                          .findForUpdate(userId, new PublicationRequestKey("incomplete"))
                           .orElseThrow()
                           .isComplete())
                   .isFalse());
       inTransaction(
           context,
           ignored ->
-              assertThat(repository(context).tryClaim(userId, "incomplete", input())).isEmpty());
+              assertThat(
+                      repository(context)
+                          .tryClaim(userId, new PublicationRequestKey("incomplete"), input()))
+                  .isEmpty());
       long gameId = game(jdbc, userId);
       assertConstraint(
           () ->
@@ -478,8 +508,10 @@ class PublicationRecordPostgresTest {
       inTransaction(
           context,
           ignored -> {
-            PublicationIdempotencyRepository.Claim claim =
-                repository(context).tryClaim(userId, "complete", input(jdbc, gameId)).orElseThrow();
+            PublicationClaim claim =
+                repository(context)
+                    .tryClaim(userId, new PublicationRequestKey("complete"), input(jdbc, gameId))
+                    .orElseThrow();
             repository(context).completeClaim(claim, gameId, expiry);
           });
 
@@ -510,9 +542,9 @@ class PublicationRecordPostgresTest {
       inTransaction(
           context,
           ignored -> {
-            PublicationIdempotencyRepository.Claim claim =
+            PublicationClaim claim =
                 repository(context)
-                    .tryClaim(userId, "old-config", input(jdbc, gameId))
+                    .tryClaim(userId, new PublicationRequestKey("old-config"), input(jdbc, gameId))
                     .orElseThrow();
             repository(context).completeClaim(claim, gameId, oldExpiry);
           });
@@ -532,7 +564,10 @@ class PublicationRecordPostgresTest {
               repository(context)
                   .completeClaim(
                       repository(context)
-                          .tryClaim(other, "new-config", input(jdbc, newerGame))
+                          .tryClaim(
+                              other,
+                              new PublicationRequestKey("new-config"),
+                              input(jdbc, newerGame))
                           .orElseThrow(),
                       newerGame,
                       newExpiry));
@@ -618,9 +653,9 @@ class PublicationRecordPostgresTest {
               inTransaction(
                   context,
                   ignored -> {
-                    PublicationIdempotencyRepository.Claim claim =
+                    PublicationClaim claim =
                         repository(context)
-                            .tryClaim(userId, "cas", input(jdbc, gameId))
+                            .tryClaim(userId, new PublicationRequestKey("cas"), input(jdbc, gameId))
                             .orElseThrow();
                     context
                         .getBean(JdbcClient.class)
@@ -646,7 +681,9 @@ class PublicationRecordPostgresTest {
       var transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
       var stale =
           transaction.execute(status ->
-              repository(context).tryClaim(userId, "other-tx", input(jdbc, gameId)).orElseThrow());
+              repository(context)
+                  .tryClaim(userId, new PublicationRequestKey("other-tx"), input(jdbc, gameId))
+                  .orElseThrow());
       assertThatThrownBy(() ->
               inTransaction(
                   context,
@@ -686,11 +723,15 @@ class PublicationRecordPostgresTest {
                 jdbc.sql("savepoint before_claim").update();
                 var stale =
                     repository(context)
-                        .tryClaim(userId, "savepoint-stale", input(jdbc, gameId))
+                        .tryClaim(
+                            userId,
+                            new PublicationRequestKey("savepoint-stale"),
+                            input(jdbc, gameId))
                         .orElseThrow();
                 jdbc.sql("rollback to savepoint before_claim").update();
                 repository(context)
-                    .tryClaim(userId, "savepoint-stale", input(jdbc, gameId))
+                    .tryClaim(
+                        userId, new PublicationRequestKey("savepoint-stale"), input(jdbc, gameId))
                     .orElseThrow();
 
                 repository(context)
@@ -729,7 +770,7 @@ class PublicationRecordPostgresTest {
                     ids[1] = game(jdbc, user);
                     var claim =
                         repository(context)
-                            .tryClaim(user, invalid, input(jdbc, ids[1]))
+                            .tryClaim(user, new PublicationRequestKey(invalid), input(jdbc, ids[1]))
                             .orElseThrow();
                     ids[0] =
                         jdbc.sql("select room_id from games where id = ?")
@@ -871,7 +912,7 @@ class PublicationRecordPostgresTest {
         .param(gameId)
         .query((row, rowNum) ->
             new PublicationInput(
-                Kind.NK_CREATE,
+                PublicationKind.NK_CREATE,
                 null,
                 row.getLong(1),
                 row.getLong(2),
@@ -881,7 +922,8 @@ class PublicationRecordPostgresTest {
   }
 
   private static PublicationInput input() {
-    return new PublicationInput(Kind.NK_CREATE, null, 1L, 2L, List.of(11L, 12L, 13L, 14L), 11L);
+    return new PublicationInput(
+        PublicationKind.NK_CREATE, null, 1L, 2L, List.of(11L, 12L, 13L, 14L), 11L);
   }
 
   private static String inputJson() {

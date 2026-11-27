@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
 import com.fasterxml.jackson.databind.type.LogicalType;
 import java.util.List;
 import org.kirikick.api.publication.controller.dto.NkCreateRequest;
+import org.kirikick.api.publication.controller.dto.NkKickAddRequest;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -25,6 +26,12 @@ public class PublicationRequestJsonConfiguration implements WebMvcConfigurer {
         ObjectMapper mapper = strictMapper(jackson.getObjectMapper());
         jackson.registerObjectMappersForType(
             NkCreateRequest.class,
+            mappers ->
+                jackson
+                    .getSupportedMediaTypes()
+                    .forEach(mediaType -> mappers.put(mediaType, mapper)));
+        jackson.registerObjectMappersForType(
+            NkKickAddRequest.class,
             mappers ->
                 jackson
                     .getSupportedMediaTypes()

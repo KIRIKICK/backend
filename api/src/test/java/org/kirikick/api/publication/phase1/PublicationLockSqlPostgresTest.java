@@ -28,8 +28,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.domain.RoomResultState;
+import org.kirikick.api.room.domain.RoomStatus;
 import org.kirikick.api.room.repository.RoomRepository;
 import org.kirikick.api.user.repository.UserRepository;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
@@ -44,8 +47,7 @@ class PublicationLockSqlPostgresTest {
 
   private static final PublicationPhase1Postgres POSTGRES = new PublicationPhase1Postgres();
   private static final PublicationInput INPUT =
-      new PublicationInput(
-          PublicationInput.Kind.NK_CREATE, null, 1L, 2L, List.of(5L, 3L, 1L, 4L), 4L);
+      new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(5L, 3L, 1L, 4L), 4L);
 
   @BeforeAll
   static void start() {
@@ -82,12 +84,13 @@ class PublicationLockSqlPostgresTest {
                             .single())
                     .isEqualTo(user);
               } else {
-                assertThat(users.lockById(user)).contains(user);
+                assertThat(users.lockAndFindStatusById(user)).contains("ACTIVE");
               }
               trial.launch(() ->
                   tx.executeWithoutResult(waiterStatus -> {
                     trial.signalWaiter(actor(jdbc));
-                    assertThat(records.tryClaim(user, key, INPUT)).isPresent();
+                    assertThat(records.tryClaim(user, new PublicationRequestKey(key), INPUT))
+                        .isPresent();
                     // This JDBC INSERT is already physically executed in the waiter transaction.
                     assertThat(
                             jdbc.sql(
@@ -100,7 +103,7 @@ class PublicationLockSqlPostgresTest {
                                 .single())
                         .isOne();
                     trial.claimExecuted.complete(true);
-                    assertThat(users.lockById(user)).contains(user);
+                    assertThat(users.lockAndFindStatusById(user)).contains("ACTIVE");
                     waiterStatus.setRollbackOnly();
                   }));
               Wait wait = trial.awaitWait(observation -> true);
@@ -164,7 +167,7 @@ class PublicationLockSqlPostgresTest {
           try (var trial = new Trial(label, pool)) {
             tx.executeWithoutResult(status -> {
               trial.holder = actor(jdbc);
-              assertThat(rooms.lockById(fixture.id())).contains(fixture.id());
+              assertThat(rooms.lockAndFindCurrentStateById(fixture.id())).isPresent();
               trial.launch(() ->
                   tx.executeWithoutResult(waiterStatus -> {
                     trial.signalWaiter(actor(jdbc));
@@ -240,15 +243,14 @@ class PublicationLockSqlPostgresTest {
                     RoomId room = get(fixture);
                     var oldRoom = rooms.findById(room.id()).orElseThrow();
                     Instant before = clock.readCurrentTime();
-                    assertThat(oldRoom.getStatus()).isEqualTo(Room.Status.OPEN);
-                    assertThat(users.lockById(user)).contains(user);
-                    assertThat(rooms.lockById(room.id())).contains(room.id());
+                    assertThat(oldRoom.getStatus()).isEqualTo(RoomStatus.OPEN);
+                    assertThat(users.lockAndFindStatusById(user)).contains("ACTIVE");
+                    var state = rooms.lockAndFindCurrentStateById(room.id()).orElseThrow();
                     Instant after = clock.readCurrentTime();
-                    var state = rooms.findCurrentState(room.id()).orElseThrow();
                     assertThat(state.getOpenedAt())
                         .isEqualTo(room.closesAt().minus(Duration.ofHours(24)));
                     assertThat(state.getClosesAt()).isEqualTo(room.closesAt());
-                    assertThat(state.getResultState()).isEqualTo(Room.ResultState.NOT_READY);
+                    assertThat(state.getResultState()).isEqualTo(RoomResultState.NOT_READY);
                     result.complete(
                         new RoomRead(before, after, oldRoom.getStatus(), state.getStatus()));
                     waiterStatus.setRollbackOnly();
@@ -257,7 +259,7 @@ class PublicationLockSqlPostgresTest {
               RoomId room =
                   requiresNewTransactions(context)
                       .execute(ignored -> newRoom(jdbc, user, crossesDeadline ? 4 : 300));
-              assertThat(rooms.lockById(room.id())).contains(room.id());
+              assertThat(rooms.lockAndFindCurrentStateById(room.id())).isPresent();
               fixture.complete(room);
               Wait before = trial.awaitWait(observation -> true);
               assertRoomWait(before);
@@ -280,13 +282,13 @@ class PublicationLockSqlPostgresTest {
             RoomId room = get(fixture);
             RoomRead read = get(result);
             assertThat(read.before()).isBefore(room.closesAt());
-            assertThat(read.oldStatus()).isEqualTo(Room.Status.OPEN);
+            assertThat(read.oldStatus()).isEqualTo(RoomStatus.OPEN);
             if (crossesDeadline) {
               assertThat(read.after()).isAfterOrEqualTo(room.closesAt());
-              assertThat(read.currentStatus()).isEqualTo(Room.Status.OPEN);
+              assertThat(read.currentStatus()).isEqualTo(RoomStatus.OPEN);
             } else {
               assertThat(read.after()).isBefore(room.closesAt());
-              assertThat(read.currentStatus()).isEqualTo(Room.Status.CLOSED);
+              assertThat(read.currentStatus()).isEqualTo(RoomStatus.CLOSED);
             }
             System.out.printf(
                 "%s room=%d closes=%s read=%s%n", label, room.id(), room.closesAt(), read);
@@ -563,5 +565,5 @@ class PublicationLockSqlPostgresTest {
   private record RoomId(long id, Instant closesAt) {}
 
   private record RoomRead(
-      Instant before, Instant after, Room.Status oldStatus, Room.Status currentStatus) {}
+      Instant before, Instant after, RoomStatus oldStatus, RoomStatus currentStatus) {}
 }

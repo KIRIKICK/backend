@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.kirikick.api.ApiApplication;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.common.exception.DomainException;
-import org.kirikick.api.publication.controller.OpenRoomController;
+import org.kirikick.api.publication.controller.PublicationController;
 import org.kirikick.api.publication.controller.dto.NkCreateRequest;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.user.repository.UserRepository;
@@ -125,7 +125,7 @@ class OpenRoomHttpInputPostgresTest {
               .subject(UUID.randomUUID().toString())
               .build();
       assertThatThrownBy(() ->
-              new OpenRoomController(null)
+              new PublicationController(null, null)
                   .publish(
                       jwt,
                       request,

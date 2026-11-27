@@ -5,7 +5,7 @@ import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 
 public record PublicationInput(
-    Kind kind,
+    PublicationKind kind,
     Long roomId,
     Long rewardPresetId,
     Long questionPresetId,
@@ -15,8 +15,8 @@ public record PublicationInput(
   public PublicationInput {
     if (kind == null
         || !isId(questionPresetId)
-        || (kind == Kind.NK_CREATE && (roomId != null || !isId(rewardPresetId)))
-        || (kind == Kind.NK_KICK_ADD && (!isId(roomId) || rewardPresetId != null))) {
+        || (kind == PublicationKind.NK_CREATE && (roomId != null || !isId(rewardPresetId)))
+        || (kind == PublicationKind.NK_KICK_ADD && (!isId(roomId) || rewardPresetId != null))) {
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_TARGET);
     }
     if (choiceIds == null
@@ -32,10 +32,5 @@ public record PublicationInput(
 
   private static boolean isId(Long id) {
     return id != null && id > 0;
-  }
-
-  public enum Kind {
-    NK_CREATE,
-    NK_KICK_ADD
   }
 }

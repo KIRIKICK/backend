@@ -15,11 +15,14 @@ import org.kirikick.api.game.domain.Game;
 import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
+import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Claim;
-import org.kirikick.api.publication.repository.PublicationIdempotencyRepository.Replay;
+import org.kirikick.api.publication.repository.model.PublicationClaim;
+import org.kirikick.api.publication.repository.model.PublicationReplay;
+import org.kirikick.api.publication.repository.model.PublicationReservation;
 import org.kirikick.api.question.domain.QuestionPreset;
 import org.kirikick.api.question.domain.QuestionPresetChoice;
 import org.kirikick.api.question.repository.QuestionPresetChoiceRepository;
@@ -27,7 +30,9 @@ import org.kirikick.api.question.repository.QuestionPresetRepository;
 import org.kirikick.api.reward.domain.RewardPreset;
 import org.kirikick.api.reward.repository.RewardPresetRepository;
 import org.kirikick.api.room.domain.Room;
+import org.kirikick.api.room.domain.RoomStatus;
 import org.kirikick.api.room.repository.RoomRepository;
+import org.kirikick.api.room.repository.projection.RoomState;
 import org.kirikick.api.user.domain.User;
 import org.kirikick.api.user.domain.UserStatus;
 import org.kirikick.api.user.domain.exception.UserErrorCode;
@@ -53,7 +58,8 @@ public class OpenRoomService {
   private final PublicationProperties properties;
   private final PublicationCommitObserver commitObserver;
 
-  public Result publish(UUID userUuid, String requestKey, PublicationInput input) {
+  public PublicationResult publish(
+      UUID userUuid, PublicationRequestKey requestKey, PublicationInput input) {
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -61,8 +67,9 @@ public class OpenRoomService {
         () -> transaction.execute(status -> publishInTransaction(userUuid, requestKey, input)));
   }
 
-  private Result publishInTransaction(UUID userUuid, String requestKey, PublicationInput input) {
-    if (input.kind() != PublicationInput.Kind.NK_CREATE) {
+  private PublicationResult publishInTransaction(
+      UUID userUuid, PublicationRequestKey requestKey, PublicationInput input) {
+    if (input.kind() != PublicationKind.NK_CREATE) {
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
     }
     long userId =
@@ -70,19 +77,17 @@ public class OpenRoomService {
             .findByUuid(userUuid)
             .map(User::getId)
             .orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    PublicationIdempotencyRepository.Reservation reservation =
-        records.reserveNkCreate(userId, requestKey, input);
-    if (reservation instanceof Replay replay) {
-      return replay(replay);
+    PublicationReservation reservation = records.reserveNkCreate(userId, requestKey, input);
+    if (reservation instanceof PublicationReplay replay) {
+      return PublicationResult.replayed(
+          replay.roomId(), replay.gameId(), replay.openedAt(), replay.closesAt());
     }
-    Claim claim = (Claim) reservation;
-    users.lockById(userId).orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    User user =
+    PublicationClaim claim = (PublicationClaim) reservation;
+    String userStatus =
         users
-            .findById(userId)
+            .lockAndFindStatusById(userId)
             .orElseThrow(() -> new DomainException(UserErrorCode.ACCOUNT_NOT_FOUND));
-    entityManager.refresh(user);
-    if (user.getStatus() != UserStatus.ACTIVE) {
+    if (!UserStatus.ACTIVE.name().equals(userStatus)) {
       throw new DomainException(AuthErrorCode.ACCOUNT_INACTIVE);
     }
     rooms.findStoredOpenRoomIdByHostUserId(userId).ifPresent(this::reconcileOpenRoom);
@@ -103,7 +108,7 @@ public class OpenRoomService {
       }
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
     }
-    Room room = rooms.saveAndFlush(Room.prepare(user, reward));
+    Room room = rooms.saveAndFlush(Room.prepare(users.getReferenceById(userId), reward));
     Game game = games.saveAndFlush(Game.prepare(room, question));
     List<Choice> choices =
         gameChoices.saveAllAndFlush(
@@ -119,20 +124,16 @@ public class OpenRoomService {
     entityManager.flush();
     records.completeClaim(claim, game.getId(), properties.recordExpiresAt(openedAt));
     entityManager.flush();
-    return new Result(true, room.getId(), game.getId(), openedAt, closesAt);
+    return PublicationResult.created(room.getId(), game.getId(), openedAt, closesAt);
   }
 
   private void reconcileOpenRoom(long roomId) {
-    rooms
-        .lockById(roomId)
-        .orElseThrow(
-            () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
-    RoomRepository.State state =
+    RoomState state =
         rooms
-            .findCurrentState(roomId)
+            .lockAndFindCurrentStateById(roomId)
             .orElseThrow(
                 () -> new DomainException(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID));
-    if (state.getStatus() != Room.Status.OPEN) {
+    if (state.getStatus() != RoomStatus.OPEN) {
       return;
     }
     if (state.getOpenedAt() == null || state.getClosesAt() == null) {
@@ -149,12 +150,4 @@ public class OpenRoomService {
     room.closeIntake();
     entityManager.flush();
   }
-
-  private static Result replay(Replay replay) {
-    return new Result(
-        false, replay.roomId(), replay.gameId(), replay.openedAt(), replay.closesAt());
-  }
-
-  public record Result(
-      boolean created, long roomId, long gameId, Instant openedAt, Instant closesAt) {}
 }
