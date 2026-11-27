@@ -9,9 +9,9 @@ import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-class OpenRoomExceptionHandlerTest {
+class PublicationExceptionHandlerTest {
 
-  private final OpenRoomExceptionHandler handler = new OpenRoomExceptionHandler();
+  private final PublicationExceptionHandler handler = new PublicationExceptionHandler();
 
   @Test
   void mapsUnreadablePublicationRecordSeparatelyFromGenericInternalFailure() {

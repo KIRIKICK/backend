@@ -135,11 +135,16 @@ public class AuthSecurityConfiguration {
         // Resource-server defaults exempt bearer requests; only publication also requires CSRF.
         filter.setRequireCsrfProtectionMatcher(request ->
             CsrfFilter.DEFAULT_CSRF_MATCHER.matches(request)
-                && ("/games".equals(request.getServletPath())
-                    || !hasBearerToken(request, bearerTokens)));
+                && (requiresPublicationCsrf(request) || !hasBearerToken(request, bearerTokens)));
         return filter;
       }
     };
+  }
+
+  private static boolean requiresPublicationCsrf(HttpServletRequest request) {
+    return "/games".equals(request.getServletPath())
+        || ("POST".equals(request.getMethod())
+            && request.getServletPath().matches("/rooms/[^/]+/games"));
   }
 
   private static boolean hasBearerToken(
@@ -198,8 +203,9 @@ public class AuthSecurityConfiguration {
     cors.addAllowedMethod("GET");
     cors.addAllowedMethod("POST");
     UrlBasedCorsConfigurationSource corsSource = new UrlBasedCorsConfigurationSource();
+    final CorsConfiguration publicationCors;
     if (publicationEnabled) {
-      CorsConfiguration publicationCors =
+      publicationCors =
           new CorsConfiguration(cors) {
             @Override
             public String checkOrigin(String requestOrigin) {
@@ -210,12 +216,24 @@ public class AuthSecurityConfiguration {
           new ArrayList<>(Objects.requireNonNull(cors.getAllowedHeaders())));
       publicationCors.addAllowedHeader("Idempotency-Key");
       corsSource.registerCorsConfiguration("/games", publicationCors);
+    } else {
+      publicationCors = null;
     }
     corsSource.registerCorsConfiguration("/**", cors);
 
     http.securityContext(context -> context.securityContextRepository(noSecurityContext))
         .requestCache(cache -> cache.requestCache(new NullRequestCache()))
-        .cors(corsConfig -> corsConfig.configurationSource(corsSource))
+        .cors(corsConfig ->
+            corsConfig.configurationSource(request -> {
+              String requestedMethod = request.getHeader("Access-Control-Request-Method");
+              String method = requestedMethod == null ? request.getMethod() : requestedMethod;
+              if (publicationEnabled
+                  && "POST".equals(method)
+                  && request.getServletPath().matches("/rooms/[^/]+/games")) {
+                return publicationCors;
+              }
+              return corsSource.getCorsConfiguration(request);
+            }))
         .csrf(csrfConfig -> {
           csrfConfig
               .csrfTokenRepository(csrf)
