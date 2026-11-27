@@ -2,17 +2,12 @@ package org.kirikick.api.publication.repository;
 
 import static java.time.ZoneOffset.UTC;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -37,12 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(propagation = Propagation.MANDATORY)
 public class PublicationIdempotencyRepository {
-  private static final JsonMapper JSON =
-      JsonMapper.builder()
-          .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
-          .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
-          .enable(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
-          .build();
   private final JdbcClient jdbc;
   private final DbTimeSource clock;
 
@@ -177,7 +166,7 @@ public class PublicationIdempotencyRepository {
                and record_expires_at = :oldExpiry and record_expires_at <= :cutoff
             returning claim_id, pg_current_xact_id()::text as xid
             """)
-        .param("input", writeInput(input))
+        .param("input", PublicationInputJsonConverter.encode(input))
         .param("userId", locked.userId())
         .param("requestKey", locked.requestKey().value())
         .param("oldClaimId", locked.claimId())
@@ -207,7 +196,7 @@ public class PublicationIdempotencyRepository {
             """)
         .param("userId", userId)
         .param("requestKey", requestKey.value())
-        .param("input", writeInput(input))
+        .param("input", PublicationInputJsonConverter.encode(input))
         .query((row, rowNum) ->
             new PublicationClaim(
                 userId,
@@ -264,7 +253,7 @@ public class PublicationIdempotencyRepository {
             .param("expiresAt", recordExpiresAt.atOffset(UTC))
             .param("userId", claim.userId())
             .param("requestKey", claim.requestKey().value())
-            .param("input", writeInput(claim.input()))
+            .param("input", PublicationInputJsonConverter.encode(claim.input()))
             .param("claimId", claim.id())
             .param("claimXid", claim.xid())
             .query((row, rowNum) ->
@@ -300,14 +289,8 @@ public class PublicationIdempotencyRepository {
   }
 
   private static PublicationIdempotencyRecord readRecord(ExistingReservation row) {
-    PublicationInput input;
-    try {
-      input = JSON.readValue(row.rawInput(), PublicationInput.class);
-    } catch (JsonProcessingException | RuntimeException exception) {
-      throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
-    }
-    if (input == null
-        || (row.gameId() == null) != (row.rawExpiry() == null)
+    PublicationInput input = PublicationInputJsonConverter.decode(row.rawInput());
+    if ((row.gameId() == null) != (row.rawExpiry() == null)
         || (row.rawExpiry() != null && !row.finiteExpiry()))
       throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
     Instant expiry = null;
@@ -319,14 +302,5 @@ public class PublicationIdempotencyRepository {
       }
     return new PublicationIdempotencyRecord(
         row.userId(), row.requestKey(), input, row.gameId(), expiry, row.claimId());
-  }
-
-  private static String writeInput(PublicationInput input) {
-    try {
-      return JSON.writeValueAsString(Objects.requireNonNull(input));
-    } catch (JsonProcessingException exception) {
-      throw new DomainException(
-          PublicationErrorCode.PUBLICATION_INPUT_SERIALIZATION_FAILED, exception);
-    }
   }
 }

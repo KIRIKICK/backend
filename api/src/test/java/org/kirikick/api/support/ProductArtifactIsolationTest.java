@@ -48,6 +48,7 @@ class ProductArtifactIsolationTest {
                 "publication/infra/model/PublicationCommitSnapshot.class",
                 "publication/repository/PublicationIdempotencyRepository.class",
                 "publication/repository/PublicationIdempotencyRepository$1.class",
+                "publication/repository/PublicationInputJsonConverter.class",
                 "publication/repository/model/ExistingReservation.class",
                 "publication/repository/model/LockedReservation.class",
                 "publication/repository/model/PublicationClaim.class",
