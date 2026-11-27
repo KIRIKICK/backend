@@ -252,9 +252,11 @@ class AddKickHttpCommitPostgresTest {
         .extracting(NkCreateCommitWire.WireEvent::event)
         .contains("COMMIT_FORWARDED", "BACKEND_REPLY_WITHHELD");
     WIRE.disarm();
+    Map<String, Object> beforeReplay = auditSnapshot(F05_KEY, fixture, initial);
     NkCreateHttpCommitProbe.Case replayProbe =
         arm("F05_REPLAY", F05_KEY, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
     HttpResponse<String> replay = post(fixture, F05_KEY);
+    Map<String, Object> afterReplay = auditSnapshot(F05_KEY, fixture, replayProbe);
     recordEvidence("F05_REPLAY", F05_KEY, fixture, replayProbe, WIRE.events(), replay);
     assertError(response, 503, "PUBLICATION_UNAVAILABLE");
     assertCommitBoundary(initial, initialEvents, 'C', true);
@@ -262,6 +264,8 @@ class AddKickHttpCommitPostgresTest {
     assertThat(replay.statusCode()).withFailMessage(replay.body()).isEqualTo(200);
     assertThat(auditRecordExpiresAt(F05_KEY)).isEqualTo(expiresAtBeforeReplay);
     assertThat(json.readTree(replay.body())).isEqualTo(originalResult);
+    assertThat(afterReplay.get("games")).isEqualTo(beforeReplay.get("games"));
+    assertThat(afterReplay.get("choices")).isEqualTo(beforeReplay.get("choices"));
   }
 
   @Test
@@ -536,13 +540,17 @@ class AddKickHttpCommitPostgresTest {
     assertThat(auditSnapshot(key, fixture, initial).get("xidStatus")).isEqualTo("committed");
     JsonNode originalResult = json.valueToTree(auditPublishedResult(key));
     String expiresAt = auditRecordExpiresAt(key);
+    Map<String, Object> beforeReplay = auditSnapshot(key, fixture, initial);
     NkCreateHttpCommitProbe.Case replayProbe =
         arm("F07_REPLAY", key, pid -> WIRE.arm(pid, NkCreateCommitWire.Loss.NONE));
     HttpResponse<String> replay = post(fixture, key);
+    Map<String, Object> afterReplay = auditSnapshot(key, fixture, replayProbe);
     recordEvidence("F07_REPLAY", key, fixture, replayProbe, WIRE.events(), replay);
     assertThat(replay.statusCode()).withFailMessage(replay.body()).isEqualTo(200);
     assertThat(json.readTree(replay.body())).isEqualTo(originalResult);
     assertThat(auditRecordExpiresAt(key)).isEqualTo(expiresAt);
+    assertThat(afterReplay.get("games")).isEqualTo(beforeReplay.get("games"));
+    assertThat(afterReplay.get("choices")).isEqualTo(beforeReplay.get("choices"));
   }
 
   private NkCreateHttpCommitProbe.PoolBorrow borrowForObserverPreparation(

@@ -23,6 +23,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
@@ -109,7 +110,9 @@ class OpenRoomRegistrationPostgresTest {
         .getHandlerMethods()
         .entrySet()
         .stream()
-        .filter(entry -> entry.getKey().getPatternValues().contains(path))
+        .filter(entry ->
+            entry.getKey().getPatternValues().contains(path)
+                && entry.getKey().getMethodsCondition().getMethods().contains(RequestMethod.POST))
         .map(Map.Entry::getValue)
         .map(HandlerMethod::getBeanType)
         .findFirst();

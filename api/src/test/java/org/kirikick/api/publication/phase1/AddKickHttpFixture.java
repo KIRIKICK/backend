@@ -113,7 +113,7 @@ final class AddKickHttpFixture {
                         .build(),
                     HttpResponse.BodyHandlers.ofString())
                 .statusCode())
-        .withFailMessage("known authenticated GET must work before POST assessed")
+        .as("known authenticated GET must work before POST assessed")
         .isEqualTo(200);
     return fixture;
   }

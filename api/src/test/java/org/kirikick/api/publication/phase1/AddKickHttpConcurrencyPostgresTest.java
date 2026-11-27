@@ -1,6 +1,7 @@
 package org.kirikick.api.publication.phase1;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.willReturn;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.http.HttpResponse;
@@ -11,6 +12,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -26,6 +29,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.kirikick.api.auth.service.LoginSessionService;
 import org.kirikick.api.auth.support.AuthTestSettings;
+import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.user.repository.UserRepository;
 import org.kirikick.testsupport.postgres.PostgresTestDatabase;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +40,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -48,6 +53,7 @@ class AddKickHttpConcurrencyPostgresTest {
   @Autowired private DataSource dataSource;
   @Autowired private UserRepository users;
   @Autowired private LoginSessionService logins;
+  @MockitoSpyBean private DbTimeSource clock;
 
   @DynamicPropertySource
   static void infrastructure(DynamicPropertyRegistry registry) {
@@ -144,13 +150,13 @@ class AddKickHttpConcurrencyPostgresTest {
   @DisplayName("C-03: 실제 Room 잠금 대기 중 DB 마감 시각을 넘으면 새 추가를 거절한다")
   void rejectsNewKickWhenActualRoomLockWaitCrossesDeadline() throws Exception {
     AddKickHttpFixture.Fixture fixture = fixture();
-    jdbc.sql(
-            "with boundary as (select clock_timestamp() + interval '2 seconds' as closes_at) "
-                + "update rooms set opened_at = boundary.closes_at - interval '24 hours', "
-                + "closes_at = boundary.closes_at from boundary where id = :roomId")
+    Instant closesAt = Instant.parse("2030-07-05T10:45:00Z");
+    jdbc.sql("update rooms set opened_at = :openedAt, closes_at = :closesAt where id = :roomId")
+        .param("openedAt", closesAt.minus(Duration.ofHours(24)).atOffset(ZoneOffset.UTC))
+        .param("closesAt", closesAt.atOffset(ZoneOffset.UTC))
         .param("roomId", fixture.roomId())
         .update();
-    assertThat(isBeforeDeadline(fixture.roomId())).isTrue();
+    willReturn(closesAt.minusNanos(1_000)).given(clock).readCurrentTime();
     String before = roomSnapshot(fixture.roomId());
     String domainBefore = domainSnapshot(fixture.roomId(), fixture.user().getId());
     long gamesBefore = gameCount(fixture.roomId());
@@ -165,8 +171,7 @@ class AddKickHttpConcurrencyPostgresTest {
       WaitEvidence roomWait = awaitWaitFor(holderPid, Set.of(), request);
       recordLockEvidence("c03-deadline", List.of(roomWait));
       assertThat(roomWait.query()).containsIgnoringCase("rooms");
-      assertThat(isBeforeDeadline(fixture.roomId())).as("실제 Room 잠금 대기가 마감 전에 시작되어야 한다").isTrue();
-      awaitDeadline(fixture.roomId());
+      willReturn(closesAt).given(clock).readCurrentTime();
       holder.commit();
 
       HttpResponse<String> response = request.get(15, TimeUnit.SECONDS);
@@ -285,24 +290,6 @@ class AddKickHttpConcurrencyPostgresTest {
       Thread.sleep(20);
     }
     throw new AssertionError("no PostgreSQL lock waiter blocked by pid=" + blockerPid);
-  }
-
-  private boolean isBeforeDeadline(long roomId) {
-    return jdbc.sql("select clock_timestamp() < closes_at from rooms where id = :roomId")
-        .param("roomId", roomId)
-        .query(Boolean.class)
-        .single();
-  }
-
-  private void awaitDeadline(long roomId) throws Exception {
-    long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-    while (System.nanoTime() < deadline) {
-      if (!isBeforeDeadline(roomId)) {
-        return;
-      }
-      Thread.sleep(10);
-    }
-    throw new AssertionError("PostgreSQL clock did not reach the persisted room deadline");
   }
 
   private boolean gameExists(long gameId) {

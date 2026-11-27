@@ -145,12 +145,20 @@ class AddKickHttpInputPostgresTest {
     PublicationSnapshot before = snapshot(fixture);
     User other =
         users.saveAndFlush(User.create("o" + UUID.randomUUID().toString().substring(0, 6), null));
+    String forbiddenKey = UUID.randomUUID().toString();
     HttpResponse<String> forbidden =
-        fixture()
-            .postRawAs(
-                fixture, UUID.randomUUID().toString(), logins.login(other).accessToken(), body);
+        fixture().postRawAs(fixture, forbiddenKey, logins.login(other).accessToken(), body);
     assertError(forbidden, 403, "PUBLICATION_FORBIDDEN");
     assertThat(snapshot(fixture)).isEqualTo(before);
+    assertThat(
+            jdbc.sql(
+                    "select count(*) from publication_idempotency "
+                        + "where user_id = :userId and request_key = :requestKey")
+                .param("userId", other.getId())
+                .param("requestKey", forbiddenKey)
+                .query(Long.class)
+                .single())
+        .isZero();
 
     ReflectionTestUtils.setField(fixture.user(), "status", UserStatus.SUSPENDED);
     users.saveAndFlush(fixture.user());

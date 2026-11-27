@@ -533,7 +533,8 @@ class NkKickAddRecordsPostgresTest {
   private static String rawRow(JdbcClient db, long userId, String key) {
     return db.sql(
             """
-            select normalized_input::text || '|' || coalesce(game_id::text, 'null') || '|'
+            select claim_id::text || '|' || normalized_input::text || '|'
+                   || coalesce(game_id::text, 'null') || '|'
                    || coalesce(record_expires_at::text, 'null')
               from publication_idempotency where user_id = ? and request_key = ?
             """)

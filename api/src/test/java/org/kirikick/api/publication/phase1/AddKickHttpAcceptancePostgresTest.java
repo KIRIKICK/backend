@@ -321,16 +321,17 @@ class AddKickHttpAcceptancePostgresTest {
     reset(clock);
     willReturn(expiry).given(clock).readCurrentTime();
     HttpResponse<String> atExpiry = post(fixture, key, fixture.choiceIds());
-    reset(clock);
-    willReturn(expiry.plusNanos(1_000)).given(clock).readCurrentTime();
-    HttpResponse<String> afterExpiry = post(fixture, key, fixture.choiceIds());
-
     assertThat(beforeExpiry.statusCode()).withFailMessage(beforeExpiry.body()).isEqualTo(200);
     assertThat(json.readTree(beforeExpiry.body())).isEqualTo(json.readTree(created.body()));
     assertThat(atExpiry.statusCode()).withFailMessage(atExpiry.body()).isEqualTo(409);
     assertThat(json.readTree(atExpiry.body()).required("code").textValue())
         .isEqualTo("ROOM_INTAKE_CLOSED");
     assertThat(fullSnapshot(fixture, key)).isEqualTo(before);
+
+    reset(clock);
+    willReturn(expiry.plusNanos(1_000)).given(clock).readCurrentTime();
+    HttpResponse<String> afterExpiry = post(fixture, key, fixture.choiceIds());
+
     assertThat(afterExpiry.statusCode()).withFailMessage(afterExpiry.body()).isEqualTo(409);
     assertThat(fullSnapshot(fixture, key)).isEqualTo(before);
   }
@@ -720,7 +721,8 @@ class AddKickHttpAcceptancePostgresTest {
     assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(201);
     assertThat(json.readTree(response.body()).required("roomId").textValue())
         .isEqualTo(String.valueOf(setup.currentRoomId()));
-    assertCompletedReplacement(setup, before);
+    assertThat(json.readTree(response.body()).required("gameId").textValue())
+        .isEqualTo(Long.toString(assertCompletedReplacement(setup, before)));
   }
 
   @Test
@@ -735,7 +737,8 @@ class AddKickHttpAcceptancePostgresTest {
     assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(201);
     assertThat(json.readTree(response.body()).required("roomId").textValue())
         .isEqualTo(String.valueOf(setup.currentRoomId()));
-    assertCompletedReplacement(setup, before);
+    assertThat(json.readTree(response.body()).required("gameId").textValue())
+        .isEqualTo(Long.toString(assertCompletedReplacement(setup, before)));
   }
 
   @ParameterizedTest(name = "stage={0}")
@@ -985,7 +988,7 @@ class AddKickHttpAcceptancePostgresTest {
         gameSnapshot(oldGameId));
   }
 
-  private void assertCompletedReplacement(
+  private long assertCompletedReplacement(
       ExpiredReplacementFixture setup, ReplacementBefore before) {
     Long currentGameId =
         jdbc.sql(
@@ -1025,6 +1028,7 @@ class AddKickHttpAcceptancePostgresTest {
     assertThat(roomSnapshot(setup.fixture().roomId())).isEqualTo(before.originalRoom());
     assertThat(roomSnapshot(setup.currentRoomId())).isEqualTo(before.currentRoom());
     assertThat(gameSnapshot(before.oldGameId())).isEqualTo(before.oldGame());
+    return currentGameId;
   }
 
   private String gameSnapshot(long gameId) {

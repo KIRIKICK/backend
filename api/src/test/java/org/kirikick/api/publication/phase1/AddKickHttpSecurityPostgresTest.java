@@ -8,6 +8,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +33,7 @@ import org.springframework.test.context.DynamicPropertySource;
 @Import(OpenRoomHttpPostgresTest.DomainEntities.class)
 class AddKickHttpSecurityPostgresTest {
   private static final String ORIGIN = "http://localhost:5173";
+  private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
   @LocalServerPort private int port;
   @Autowired private ObjectMapper json;
@@ -60,15 +63,31 @@ class AddKickHttpSecurityPostgresTest {
   @DisplayName("추가 출제 POST만 Idempotency-Key CORS와 CSRF 특례를 받는다")
   void postOnlyCorsAndCsrfBoundary() throws Exception {
     AddKickHttpFixture.Fixture fixture = fixture().fixture();
-    HttpResponse<String> postPreflight = preflight("/rooms/" + fixture.roomId() + "/games", "POST");
+    HttpResponse<String> postPreflight =
+        preflight(
+            "/rooms/" + fixture.roomId() + "/games",
+            "POST",
+            String.join(
+                ", ",
+                List.of(
+                    HttpHeaders.AUTHORIZATION,
+                    HttpHeaders.CONTENT_TYPE,
+                    "X-XSRF-TOKEN",
+                    "Idempotency-Key")));
     assertThat(postPreflight.statusCode()).isEqualTo(200);
-    assertThat(postPreflight.headers().firstValue("Access-Control-Allow-Headers").orElse(""))
+    String allowedHeaders =
+        postPreflight.headers().firstValue("Access-Control-Allow-Headers").orElse("");
+    assertThat(allowedHeaders)
+        .containsIgnoringCase(HttpHeaders.AUTHORIZATION)
+        .containsIgnoringCase(HttpHeaders.CONTENT_TYPE)
+        .containsIgnoringCase("X-XSRF-TOKEN")
         .containsIgnoringCase("Idempotency-Key");
 
-    HttpResponse<String> getPreflight = preflight("/rooms/" + fixture.roomId() + "/games", "GET");
+    HttpResponse<String> getPreflight =
+        preflight("/rooms/" + fixture.roomId() + "/games", "GET", "Idempotency-Key");
     assertThat(getPreflight.statusCode()).isEqualTo(403);
     HttpResponse<String> multiSegment =
-        preflight("/rooms/" + fixture.roomId() + "/nested/games", "POST");
+        preflight("/rooms/" + fixture.roomId() + "/nested/games", "POST", "Idempotency-Key");
     assertThat(multiSegment.statusCode()).isEqualTo(403);
 
     String body =
@@ -82,6 +101,7 @@ class AddKickHttpSecurityPostgresTest {
         HttpClient.newHttpClient()
             .send(
                 HttpRequest.newBuilder(endpoint("/rooms/" + fixture.roomId() + "/games"))
+                    .timeout(TIMEOUT)
                     .header(HttpHeaders.ORIGIN, ORIGIN)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.grant().accessToken())
                     .header("Idempotency-Key", UUID.randomUUID().toString())
@@ -101,6 +121,7 @@ class AddKickHttpSecurityPostgresTest {
         HttpClient.newHttpClient()
             .send(
                 HttpRequest.newBuilder(endpoint("/v3/api-docs"))
+                    .timeout(TIMEOUT)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + fixture.grant().accessToken())
                     .GET()
                     .build(),
@@ -144,13 +165,15 @@ class AddKickHttpSecurityPostgresTest {
         .isTrue();
   }
 
-  private HttpResponse<String> preflight(String path, String method) throws Exception {
+  private HttpResponse<String> preflight(String path, String method, String requestedHeaders)
+      throws Exception {
     return HttpClient.newHttpClient()
         .send(
             HttpRequest.newBuilder(endpoint(path))
+                .timeout(TIMEOUT)
                 .header(HttpHeaders.ORIGIN, ORIGIN)
                 .header("Access-Control-Request-Method", method)
-                .header("Access-Control-Request-Headers", "Idempotency-Key")
+                .header("Access-Control-Request-Headers", requestedHeaders)
                 .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
                 .build(),
             HttpResponse.BodyHandlers.ofString());
@@ -176,6 +199,5 @@ class AddKickHttpSecurityPostgresTest {
         PostgresTestDatabase.container().getJdbcUrl(), "nk76_http_security");
   }
 
-  private record Request(
-      String questionPresetId, java.util.List<String> choiceIds, String correctChoiceId) {}
+  private record Request(String questionPresetId, List<String> choiceIds, String correctChoiceId) {}
 }
