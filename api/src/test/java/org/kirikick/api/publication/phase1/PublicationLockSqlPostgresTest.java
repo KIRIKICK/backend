@@ -29,6 +29,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.room.domain.RoomResultState;
 import org.kirikick.api.room.domain.RoomStatus;
@@ -88,7 +89,8 @@ class PublicationLockSqlPostgresTest {
               trial.launch(() ->
                   tx.executeWithoutResult(waiterStatus -> {
                     trial.signalWaiter(actor(jdbc));
-                    assertThat(records.tryClaim(user, key, INPUT)).isPresent();
+                    assertThat(records.tryClaim(user, new PublicationRequestKey(key), INPUT))
+                        .isPresent();
                     // This JDBC INSERT is already physically executed in the waiter transaction.
                     assertThat(
                             jdbc.sql(

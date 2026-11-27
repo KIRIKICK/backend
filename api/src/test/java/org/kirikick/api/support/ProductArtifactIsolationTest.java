@@ -38,6 +38,7 @@ class ProductArtifactIsolationTest {
                 "publication/domain/PublicationIdempotencyRecord.class",
                 "publication/domain/PublicationInput.class",
                 "publication/domain/PublicationKind.class",
+                "publication/domain/PublicationRequestKey.class",
                 "publication/domain/exception/PublicationErrorCode.class",
                 "publication/infra/PublicationCommitObserver.class",
                 "publication/infra/PublicationDataSource.class",

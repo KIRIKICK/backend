@@ -17,6 +17,7 @@ import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.publication.repository.model.ExistingReservation;
@@ -62,7 +63,8 @@ class NkKickAddRecordsPostgresTest {
       assertThatThrownBy(() ->
               tx.execute(status -> {
                 var reservation =
-                    records.reserveNkKickAdd(fixture.user(), "corrupt", fixture.input());
+                    records.reserveNkKickAdd(
+                        fixture.user(), new PublicationRequestKey("corrupt"), fixture.input());
                 assertThat(reservation).isInstanceOf(ExistingReservation.class);
                 return records.resolveNkKickAdd(
                     (ExistingReservation) reservation, fixture.input(), EXPIRY);
@@ -111,7 +113,9 @@ class NkKickAddRecordsPostgresTest {
                 tx.execute(status -> {
                   var raw =
                       repository.reserveNkKickAdd(
-                          fixture.user(), record.requestKey(), fixture.input());
+                          fixture.user(),
+                          new PublicationRequestKey(record.requestKey()),
+                          fixture.input());
                   assertThat(raw).isInstanceOf(ExistingReservation.class);
                   return repository.resolveNkKickAdd(
                       (ExistingReservation) raw, fixture.input(), EXPIRY.plusNanos(1_000));
@@ -144,7 +148,9 @@ class NkKickAddRecordsPostgresTest {
                 tx.execute(status -> {
                   var raw =
                       repository.reserveNkKickAdd(
-                          infinityFixture.user(), key, infinityFixture.input());
+                          infinityFixture.user(),
+                          new PublicationRequestKey(key),
+                          infinityFixture.input());
                   assertThat(raw).isInstanceOf(ExistingReservation.class);
                   return repository.resolveNkKickAdd(
                       (ExistingReservation) raw, infinityFixture.input(), EXPIRY.plusNanos(1_000));
@@ -167,7 +173,9 @@ class NkKickAddRecordsPostgresTest {
       PublicationIdempotencyRepository records = recordsAt(db);
       tx.executeWithoutResult(status -> {
         PublicationClaim claim =
-            (PublicationClaim) records.reserveNkKickAdd(fixture.user(), "replay", fixture.input());
+            (PublicationClaim)
+                records.reserveNkKickAdd(
+                    fixture.user(), new PublicationRequestKey("replay"), fixture.input());
         records.completeClaim(claim, fixture.game(), EXPIRY);
       });
       PublicationInput reordered =
@@ -181,7 +189,9 @@ class NkKickAddRecordsPostgresTest {
       PublicationReplay replay =
           tx.execute(status -> {
             ExistingReservation existing =
-                (ExistingReservation) records.reserveNkKickAdd(fixture.user(), "replay", reordered);
+                (ExistingReservation)
+                    records.reserveNkKickAdd(
+                        fixture.user(), new PublicationRequestKey("replay"), reordered);
             return (PublicationReplay)
                 records.resolveNkKickAdd(existing, reordered, EXPIRY.minusNanos(1_000));
           });
@@ -198,14 +208,18 @@ class NkKickAddRecordsPostgresTest {
               other.input().choiceIds(),
               other.input().correctChoiceId());
       tx.executeWithoutResult(status -> {
-        PublicationClaim claim = records.tryClaim(other.user(), "command", create).orElseThrow();
+        PublicationClaim claim =
+            records
+                .tryClaim(other.user(), new PublicationRequestKey("command"), create)
+                .orElseThrow();
         records.completeClaim(claim, other.game(), EXPIRY);
       });
       assertThatThrownBy(() ->
               tx.execute(status -> {
                 ExistingReservation existing =
                     (ExistingReservation)
-                        records.reserveNkKickAdd(other.user(), "command", other.input());
+                        records.reserveNkKickAdd(
+                            other.user(), new PublicationRequestKey("command"), other.input());
                 return records.resolveNkKickAdd(existing, other.input(), EXPIRY.minusNanos(1_000));
               }))
           .isInstanceOfSatisfying(
@@ -226,7 +240,8 @@ class NkKickAddRecordsPostgresTest {
           tx.execute(status -> {
             PublicationClaim claim =
                 (PublicationClaim)
-                    records.reserveNkKickAdd(fixture.user(), "expiry", fixture.input());
+                    records.reserveNkKickAdd(
+                        fixture.user(), new PublicationRequestKey("expiry"), fixture.input());
             records.completeClaim(claim, fixture.game(), EXPIRY);
             return claim;
           });
@@ -234,14 +249,16 @@ class NkKickAddRecordsPostgresTest {
           tx.execute(status -> {
             ExistingReservation existing =
                 (ExistingReservation)
-                    records.reserveNkKickAdd(fixture.user(), "expiry", fixture.input());
+                    records.reserveNkKickAdd(
+                        fixture.user(), new PublicationRequestKey("expiry"), fixture.input());
             return records.resolveNkKickAdd(existing, fixture.input(), EXPIRY.minusNanos(1_000));
           });
       assertThat(before).isInstanceOf(PublicationReplay.class);
       tx.executeWithoutResult(status -> {
         ExistingReservation existing =
             (ExistingReservation)
-                records.reserveNkKickAdd(fixture.user(), "expiry", fixture.input());
+                records.reserveNkKickAdd(
+                    fixture.user(), new PublicationRequestKey("expiry"), fixture.input());
         PublicationClaim replacement =
             (PublicationClaim) records.resolveNkKickAdd(existing, fixture.input(), EXPIRY);
         assertThatThrownBy(() -> records.completeClaim(old, fixture.game(), EXPIRY))
@@ -256,12 +273,16 @@ class NkKickAddRecordsPostgresTest {
       Fixture after = fixture(db);
       tx.executeWithoutResult(status -> {
         PublicationClaim claim =
-            (PublicationClaim) records.reserveNkKickAdd(after.user(), "after", after.input());
+            (PublicationClaim)
+                records.reserveNkKickAdd(
+                    after.user(), new PublicationRequestKey("after"), after.input());
         records.completeClaim(claim, after.game(), EXPIRY);
       });
       tx.executeWithoutResult(status -> {
         ExistingReservation existing =
-            (ExistingReservation) records.reserveNkKickAdd(after.user(), "after", after.input());
+            (ExistingReservation)
+                records.reserveNkKickAdd(
+                    after.user(), new PublicationRequestKey("after"), after.input());
         PublicationClaim replacement =
             (PublicationClaim)
                 records.resolveNkKickAdd(existing, after.input(), EXPIRY.plusNanos(1_000));
@@ -279,7 +300,8 @@ class NkKickAddRecordsPostgresTest {
       tx.executeWithoutResult(status -> {
         PublicationClaim claim =
             (PublicationClaim)
-                records.reserveNkKickAdd(fixture.user(), "rollback", fixture.input());
+                records.reserveNkKickAdd(
+                    fixture.user(), new PublicationRequestKey("rollback"), fixture.input());
         records.completeClaim(claim, fixture.game(), EXPIRY);
       });
       String before = rawRow(db, fixture.user(), "rollback");
@@ -287,7 +309,8 @@ class NkKickAddRecordsPostgresTest {
               tx.executeWithoutResult(status -> {
                 ExistingReservation existing =
                     (ExistingReservation)
-                        records.reserveNkKickAdd(fixture.user(), "rollback", fixture.input());
+                        records.reserveNkKickAdd(
+                            fixture.user(), new PublicationRequestKey("rollback"), fixture.input());
                 assertThat(records.resolveNkKickAdd(existing, fixture.input(), EXPIRY))
                     .isInstanceOf(PublicationClaim.class);
                 throw new DeliberateRollback();
@@ -355,7 +378,9 @@ class NkKickAddRecordsPostgresTest {
                 tx.execute(status -> {
                   var raw =
                       repository.reserveNkKickAdd(
-                          caller.user(), record.requestKey(), caller.input());
+                          caller.user(),
+                          new PublicationRequestKey(record.requestKey()),
+                          caller.input());
                   return repository.resolveNkKickAdd(
                       (ExistingReservation) raw, caller.input(), EXPIRY.minusNanos(1_000));
                 }))
@@ -389,7 +414,8 @@ class NkKickAddRecordsPostgresTest {
       tx.executeWithoutResult(status -> {
         PublicationClaim claim =
             (PublicationClaim)
-                repository.reserveNkKickAdd(fixture.user(), "reverse-command", fixture.input());
+                repository.reserveNkKickAdd(
+                    fixture.user(), new PublicationRequestKey("reverse-command"), fixture.input());
         repository.completeClaim(claim, fixture.game(), EXPIRY);
       });
       PublicationInput create =
@@ -401,8 +427,9 @@ class NkKickAddRecordsPostgresTest {
               fixture.input().choiceIds(),
               fixture.input().correctChoiceId());
       assertThatThrownBy(() ->
-              tx.execute(
-                  status -> repository.reserveNkCreate(fixture.user(), "reverse-command", create)))
+              tx.execute(status ->
+                  repository.reserveNkCreate(
+                      fixture.user(), new PublicationRequestKey("reverse-command"), create)))
           .isInstanceOfSatisfying(
               DomainException.class,
               error ->
@@ -421,7 +448,9 @@ class NkKickAddRecordsPostgresTest {
         String key = "damage-" + damage;
         tx.executeWithoutResult(status -> {
           PublicationClaim claim =
-              (PublicationClaim) repository.reserveNkKickAdd(fixture.user(), key, fixture.input());
+              (PublicationClaim)
+                  repository.reserveNkKickAdd(
+                      fixture.user(), new PublicationRequestKey(key), fixture.input());
           repository.completeClaim(claim, fixture.game(), EXPIRY);
         });
         damage.apply(db, fixture.game());
@@ -430,7 +459,8 @@ class NkKickAddRecordsPostgresTest {
                 tx.execute(status -> {
                   ExistingReservation existing =
                       (ExistingReservation)
-                          repository.reserveNkKickAdd(fixture.user(), key, fixture.input());
+                          repository.reserveNkKickAdd(
+                              fixture.user(), new PublicationRequestKey(key), fixture.input());
                   return repository.resolveNkKickAdd(
                       existing, fixture.input(), EXPIRY.minusNanos(1_000));
                 }))
@@ -453,7 +483,10 @@ class NkKickAddRecordsPostgresTest {
       tx.executeWithoutResult(status -> {
         PublicationClaim claim =
             (PublicationClaim)
-                repository.reserveNkKickAdd(fixture.user(), "database-invariant", fixture.input());
+                repository.reserveNkKickAdd(
+                    fixture.user(),
+                    new PublicationRequestKey("database-invariant"),
+                    fixture.input());
         repository.completeClaim(claim, fixture.game(), EXPIRY);
       });
       String before = rawRow(db, fixture.user(), "database-invariant");

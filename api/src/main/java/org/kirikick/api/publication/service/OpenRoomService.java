@@ -16,6 +16,7 @@ import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
@@ -57,7 +58,8 @@ public class OpenRoomService {
   private final PublicationProperties properties;
   private final PublicationCommitObserver commitObserver;
 
-  public PublicationResult publish(UUID userUuid, String requestKey, PublicationInput input) {
+  public PublicationResult publish(
+      UUID userUuid, PublicationRequestKey requestKey, PublicationInput input) {
     TransactionTemplate transaction = new TransactionTemplate(transactionManager);
     transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -66,7 +68,7 @@ public class OpenRoomService {
   }
 
   private PublicationResult publishInTransaction(
-      UUID userUuid, String requestKey, PublicationInput input) {
+      UUID userUuid, PublicationRequestKey requestKey, PublicationInput input) {
     if (input.kind() != PublicationKind.NK_CREATE) {
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
     }

@@ -21,6 +21,7 @@ import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.publication.repository.model.PublicationReplay;
@@ -58,7 +59,7 @@ class OpenRoomServiceReplayTest {
         new PublicationInput(PublicationKind.NK_CREATE, null, 1L, 2L, List.of(3L, 4L, 5L, 6L), 3L);
     Instant openedAt = Instant.parse("2040-01-01T00:00:00Z");
     Instant closesAt = openedAt.plus(Duration.ofHours(24));
-    given(records.reserveNkCreate(42L, key, input))
+    given(records.reserveNkCreate(42L, new PublicationRequestKey(key), input))
         .willReturn(new PublicationReplay(10L, 20L, openedAt, closesAt));
     OpenRoomService service =
         new OpenRoomService(
@@ -76,7 +77,7 @@ class OpenRoomServiceReplayTest {
             new PublicationProperties(Duration.ofMinutes(5)),
             new PublicationCommitObserver());
 
-    assertThat(service.publish(subject, key, input))
+    assertThat(service.publish(subject, new PublicationRequestKey(key), input))
         .isEqualTo(new PublicationResult(false, 10L, 20L, openedAt, closesAt));
     then(users).should(only()).findByUuid(subject);
     then(rooms).shouldHaveNoInteractions();

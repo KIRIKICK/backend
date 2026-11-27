@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 
 class LockedReservationTest {
 
@@ -18,11 +19,12 @@ class LockedReservationTest {
     PublicationInput input =
         new PublicationInput(
             PublicationKind.NK_KICK_ADD, 4L, null, 10L, List.of(1L, 2L, 3L, 4L), 1L);
-    PublicationClaim claim = new PublicationClaim(1L, "claim-key", input, "123", claimId);
+    PublicationClaim claim =
+        new PublicationClaim(1L, new PublicationRequestKey("claim-key"), input, "123", claimId);
     ExistingReservation existing =
         new ExistingReservation(
             1L,
-            "existing-key",
+            new PublicationRequestKey("existing-key"),
             "{\"correctChoiceId\":1}",
             2L,
             "2030-01-01 00:00:00+00",

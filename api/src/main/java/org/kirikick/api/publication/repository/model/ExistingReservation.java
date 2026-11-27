@@ -1,11 +1,12 @@
 package org.kirikick.api.publication.repository.model;
 
 import java.util.UUID;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 
 /** A locked but deliberately undecoded existing row. */
 public record ExistingReservation(
     long userId,
-    String requestKey,
+    PublicationRequestKey requestKey,
     String rawInput,
     Long gameId,
     String rawExpiry,

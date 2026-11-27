@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public record PublicationIdempotencyRecord(
     long userId,
-    String requestKey,
+    PublicationRequestKey requestKey,
     PublicationInput normalizedInput,
     Long gameId,
     Instant recordExpiresAt,

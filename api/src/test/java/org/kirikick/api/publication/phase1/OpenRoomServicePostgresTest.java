@@ -33,6 +33,7 @@ import org.kirikick.api.game.repository.ChoiceRepository;
 import org.kirikick.api.game.repository.GameRepository;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.infra.PublicationCommitObserver;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
@@ -81,9 +82,11 @@ class OpenRoomServicePostgresTest {
                   fixture.choiceIds().get(1));
 
           PublicationResult created =
-              service.publish(fixture.userUuid(), "nkcreate-service-key", input);
+              service.publish(
+                  fixture.userUuid(), new PublicationRequestKey("nkcreate-service-key"), input);
           PublicationResult replayed =
-              service.publish(fixture.userUuid(), "nkcreate-service-key", input);
+              service.publish(
+                  fixture.userUuid(), new PublicationRequestKey("nkcreate-service-key"), input);
 
           assertThat(created.created()).isTrue();
           assertThat(replayed.created()).isFalse();
@@ -182,8 +185,10 @@ class OpenRoomServicePostgresTest {
           insertRoom(jdbc, fixture, "OPEN", "NOT_READY", "now()", "now() + interval '24 hours'");
           PublicationInput input = input(fixture);
 
-          assertThatThrownBy(
-                  () -> service(context).publish(fixture.userUuid(), "open-room-key", input))
+          assertThatThrownBy(() ->
+                  service(context)
+                      .publish(
+                          fixture.userUuid(), new PublicationRequestKey("open-room-key"), input))
               .isInstanceOf(DomainException.class)
               .extracting(error -> ((DomainException) error).getErrorCode())
               .isEqualTo(PublicationErrorCode.OPEN_ROOM_EXISTS);
@@ -215,7 +220,11 @@ class OpenRoomServicePostgresTest {
                   .singleRow();
 
           PublicationResult created =
-              service(context).publish(fixture.userUuid(), "expired-room-key", input(fixture));
+              service(context)
+                  .publish(
+                      fixture.userUuid(),
+                      new PublicationRequestKey("expired-room-key"),
+                      input(fixture));
 
           var after =
               jdbc.sql("select status, opened_at, closes_at, result_state from rooms where id = ?")
@@ -261,7 +270,10 @@ class OpenRoomServicePostgresTest {
 
           assertThatThrownBy(() ->
                   service(context)
-                      .publish(fixture.userUuid(), "completion-zero-key", input(fixture)))
+                      .publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("completion-zero-key"),
+                          input(fixture)))
               .isInstanceOf(DomainException.class)
               .extracting(error -> ((DomainException) error).getErrorCode())
               .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_COMPLETION_FAILED);
@@ -305,7 +317,10 @@ class OpenRoomServicePostgresTest {
 
           assertThatThrownBy(() ->
                   service(context)
-                      .publish(fixture.userUuid(), "choice-failure-key", input(fixture)))
+                      .publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("choice-failure-key"),
+                          input(fixture)))
               .isInstanceOf(RuntimeException.class)
               .hasStackTraceContaining("choice assembly failure");
           assertThat(
@@ -333,7 +348,10 @@ class OpenRoomServicePostgresTest {
 
           assertThatThrownBy(() ->
                   service(context)
-                      .publish(fixture.userUuid(), "incomplete-room-key", input(fixture)))
+                      .publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("incomplete-room-key"),
+                          input(fixture)))
               .isInstanceOf(DomainException.class)
               .extracting(error -> ((DomainException) error).getErrorCode())
               .isEqualTo(PublicationErrorCode.PUBLICATION_CLAIM_STATE_INVALID);
@@ -352,7 +370,8 @@ class OpenRoomServicePostgresTest {
           Fixture fixture = fixture(jdbc);
           OpenRoomService service = service(context);
           PublicationResult original =
-              service.publish(fixture.userUuid(), "replacement-key", input(fixture));
+              service.publish(
+                  fixture.userUuid(), new PublicationRequestKey("replacement-key"), input(fixture));
           jdbc.sql(
                   "update publication_idempotency set record_expires_at = now() - interval '1 microsecond' where request_key = ?")
               .param("replacement-key")
@@ -377,7 +396,9 @@ class OpenRoomServicePostgresTest {
                   fixture.choiceIds(),
                   fixture.choiceIds().get(1));
 
-          assertThatThrownBy(() -> service.publish(fixture.userUuid(), "replacement-key", changed))
+          assertThatThrownBy(() ->
+                  service.publish(
+                      fixture.userUuid(), new PublicationRequestKey("replacement-key"), changed))
               .isInstanceOf(DomainException.class)
               .extracting(error -> ((DomainException) error).getErrorCode())
               .isEqualTo(PublicationErrorCode.OPEN_ROOM_EXISTS);
@@ -417,7 +438,11 @@ class OpenRoomServicePostgresTest {
                   missing,
                   fixture.choiceIds().get(1));
           assertThatThrownBy(() ->
-                  service(context).publish(fixture.userUuid(), "missing-choice-key", missingInput))
+                  service(context)
+                      .publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("missing-choice-key"),
+                          missingInput))
               .isInstanceOf(DomainException.class)
               .extracting(error -> ((DomainException) error).getErrorCode())
               .isEqualTo(PublicationErrorCode.PRESET_NOT_FOUND);
@@ -447,7 +472,11 @@ class OpenRoomServicePostgresTest {
                   foreignIds,
                   fixture.choiceIds().get(1));
           assertThatThrownBy(() ->
-                  service(context).publish(fixture.userUuid(), "foreign-choice-key", foreignInput))
+                  service(context)
+                      .publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("foreign-choice-key"),
+                          foreignInput))
               .isInstanceOf(DomainException.class)
               .extracting(error -> ((DomainException) error).getErrorCode())
               .isEqualTo(PublicationErrorCode.INVALID_PUBLICATION_INPUT);
@@ -496,7 +525,9 @@ class OpenRoomServicePostgresTest {
               Future<PublicationResult> pending =
                   workers.submit(() ->
                       service.publish(
-                          fixture.userUuid(), "room-lock-deadline-key", input(fixture)));
+                          fixture.userUuid(),
+                          new PublicationRequestKey("room-lock-deadline-key"),
+                          input(fixture)));
               WaitEvidence wait = awaitRoomWait(jdbc, holderPid, pending);
               try (var statement =
                   holder.prepareStatement(
@@ -624,12 +655,18 @@ class OpenRoomServicePostgresTest {
                 }
               }
               Future<PublicationResult> first =
-                  workers.submit(
-                      () -> service.publish(fixture.userUuid(), "same-key-race", input(fixture)));
+                  workers.submit(() ->
+                      service.publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("same-key-race"),
+                          input(fixture)));
               WaitEvidence firstWait = awaitUserWaiters(jdbc, holderPid, first).getFirst();
               Future<PublicationResult> second =
-                  workers.submit(
-                      () -> service.publish(fixture.userUuid(), "same-key-race", input(fixture)));
+                  workers.submit(() ->
+                      service.publish(
+                          fixture.userUuid(),
+                          new PublicationRequestKey("same-key-race"),
+                          input(fixture)));
               WaitEvidence secondWait =
                   awaitAnyPublicationWait(jdbc, firstWait.waiterPid(), second);
               holder.commit();
@@ -862,7 +899,7 @@ class OpenRoomServicePostgresTest {
 
   private static Object invoke(OpenRoomService service, Fixture fixture, String key) {
     try {
-      return service.publish(fixture.userUuid(), key, input(fixture));
+      return service.publish(fixture.userUuid(), new PublicationRequestKey(key), input(fixture));
     } catch (DomainException exception) {
       return exception;
     }

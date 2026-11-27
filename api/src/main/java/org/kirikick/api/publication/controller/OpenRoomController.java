@@ -23,6 +23,7 @@ import org.kirikick.api.common.exception.DomainException;
 import org.kirikick.api.config.PublicationEnabledCondition;
 import org.kirikick.api.publication.controller.dto.NkCreateRequest;
 import org.kirikick.api.publication.controller.dto.NkCreateResponse;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.service.OpenRoomService;
 import org.kirikick.api.publication.service.PublicationResult;
@@ -48,8 +49,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class OpenRoomController {
 
   private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
-  private static final String UUID_V4 =
-      "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 
   private final OpenRoomService service;
 
@@ -168,12 +167,12 @@ public class OpenRoomController {
         .body(response);
   }
 
-  private static String requestKey(HttpServletRequest request) {
+  private static PublicationRequestKey requestKey(HttpServletRequest request) {
     Enumeration<String> headers = request.getHeaders(IDEMPOTENCY_KEY);
     List<String> values = headers == null ? List.of() : Collections.list(headers);
-    if (values.size() != 1 || !values.getFirst().matches(UUID_V4)) {
+    if (values.size() != 1) {
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_REQUEST_KEY);
     }
-    return values.getFirst();
+    return PublicationRequestKey.canonicalV4(values.getFirst());
   }
 }

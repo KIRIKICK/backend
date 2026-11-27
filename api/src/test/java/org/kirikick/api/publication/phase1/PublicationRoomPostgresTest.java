@@ -28,6 +28,7 @@ import org.kirikick.api.game.domain.Choice;
 import org.kirikick.api.game.domain.Game;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.repository.PublicationIdempotencyRepository;
 import org.kirikick.api.question.domain.QuestionPreset;
 import org.kirikick.api.question.domain.QuestionPresetChoice;
@@ -365,7 +366,10 @@ class PublicationRoomPostgresTest {
           Throwable failure =
               catchThrowable(() ->
                   tx.executeWithoutResult(status -> {
-                    var claim = records.tryClaim(seed.user(), key, input).orElseThrow();
+                    var claim =
+                        records
+                            .tryClaim(seed.user(), new PublicationRequestKey(key), input)
+                            .orElseThrow();
                     Room room = prepare(em, seed);
                     ids[0] = room.getId();
                     assertThat(roomRow(jdbc, ids[0]))

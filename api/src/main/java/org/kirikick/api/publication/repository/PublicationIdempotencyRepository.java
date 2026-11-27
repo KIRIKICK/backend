@@ -1,6 +1,5 @@
 package org.kirikick.api.publication.repository;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.time.ZoneOffset.UTC;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,6 +21,7 @@ import org.kirikick.api.common.infra.DbTimeSource;
 import org.kirikick.api.publication.domain.PublicationIdempotencyRecord;
 import org.kirikick.api.publication.domain.PublicationInput;
 import org.kirikick.api.publication.domain.PublicationKind;
+import org.kirikick.api.publication.domain.PublicationRequestKey;
 import org.kirikick.api.publication.domain.exception.PublicationErrorCode;
 import org.kirikick.api.publication.repository.model.ExistingReservation;
 import org.kirikick.api.publication.repository.model.LockedReservation;
@@ -47,7 +47,7 @@ public class PublicationIdempotencyRepository {
   private final DbTimeSource clock;
 
   public PublicationReservation reserveNkCreate(
-      long userId, String requestKey, PublicationInput input) {
+      long userId, PublicationRequestKey requestKey, PublicationInput input) {
     if (input.kind() != PublicationKind.NK_CREATE)
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_TARGET);
     Optional<PublicationClaim> first = tryClaim(userId, requestKey, input);
@@ -66,7 +66,7 @@ public class PublicationIdempotencyRepository {
 
   /** Acquires a kick-add record without interpreting stored JSON or expiry before authorization. */
   public LockedReservation reserveNkKickAdd(
-      long userId, String requestKey, PublicationInput input) {
+      long userId, PublicationRequestKey requestKey, PublicationInput input) {
     if (input.kind() != PublicationKind.NK_KICK_ADD)
       throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_TARGET);
     Optional<PublicationClaim> first = tryClaim(userId, requestKey, input);
@@ -179,7 +179,7 @@ public class PublicationIdempotencyRepository {
             """)
         .param("input", writeInput(input))
         .param("userId", locked.userId())
-        .param("requestKey", locked.requestKey())
+        .param("requestKey", locked.requestKey().value())
         .param("oldClaimId", locked.claimId())
         .param("oldGameId", locked.gameId())
         .param("oldExpiry", locked.recordExpiresAt().atOffset(UTC))
@@ -197,8 +197,7 @@ public class PublicationIdempotencyRepository {
   }
 
   public Optional<PublicationClaim> tryClaim(
-      long userId, String requestKey, PublicationInput input) {
-    validateRequestKey(requestKey);
+      long userId, PublicationRequestKey requestKey, PublicationInput input) {
     return jdbc.sql(
             """
             insert into publication_idempotency (user_id, request_key, normalized_input)
@@ -207,7 +206,7 @@ public class PublicationIdempotencyRepository {
             returning cast(pg_current_xact_id() as text) as xid, claim_id
             """)
         .param("userId", userId)
-        .param("requestKey", requestKey)
+        .param("requestKey", requestKey.value())
         .param("input", writeInput(input))
         .query((row, rowNum) ->
             new PublicationClaim(
@@ -219,12 +218,13 @@ public class PublicationIdempotencyRepository {
         .optional();
   }
 
-  public Optional<PublicationIdempotencyRecord> findForUpdate(long userId, String requestKey) {
+  public Optional<PublicationIdempotencyRecord> findForUpdate(
+      long userId, PublicationRequestKey requestKey) {
     return findRawForUpdate(userId, requestKey).map(PublicationIdempotencyRepository::readRecord);
   }
 
-  private Optional<ExistingReservation> findRawForUpdate(long userId, String requestKey) {
-    validateRequestKey(requestKey);
+  private Optional<ExistingReservation> findRawForUpdate(
+      long userId, PublicationRequestKey requestKey) {
     return jdbc.sql(
             """
             select user_id, request_key, normalized_input, game_id, record_expires_at::text as raw_expiry, claim_id,
@@ -234,11 +234,11 @@ public class PublicationIdempotencyRepository {
             for update
             """)
         .param("userId", userId)
-        .param("requestKey", requestKey)
+        .param("requestKey", requestKey.value())
         .query((row, rowNum) ->
             new ExistingReservation(
                 row.getLong("user_id"),
-                row.getString("request_key"),
+                new PublicationRequestKey(row.getString("request_key")),
                 row.getString("normalized_input"),
                 row.getObject("game_id", Long.class),
                 row.getString("raw_expiry"),
@@ -263,7 +263,7 @@ public class PublicationIdempotencyRepository {
             .param("gameId", gameId)
             .param("expiresAt", recordExpiresAt.atOffset(UTC))
             .param("userId", claim.userId())
-            .param("requestKey", claim.requestKey())
+            .param("requestKey", claim.requestKey().value())
             .param("input", writeInput(claim.input()))
             .param("claimId", claim.id())
             .param("claimXid", claim.xid())
@@ -297,16 +297,6 @@ public class PublicationIdempotencyRepository {
             .query(Boolean.class)
             .single();
     if (!matches) throw new DomainException(PublicationErrorCode.UNREADABLE_PUBLICATION_RECORD);
-  }
-
-  private static void validateRequestKey(String key) {
-    if (key == null
-        || key.isEmpty()
-        || key.length() > 255
-        || key.indexOf('\0') >= 0
-        || !UTF_8.newEncoder().canEncode(key)
-        || key.getBytes(UTF_8).length > 255)
-      throw new DomainException(PublicationErrorCode.INVALID_PUBLICATION_REQUEST_KEY);
   }
 
   private static PublicationIdempotencyRecord readRecord(ExistingReservation row) {
